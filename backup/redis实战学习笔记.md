@@ -4438,3 +4438,635 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
 
 ## 关注和取消关注
 
+controller：
+
+```java
+package mao.spring_boot_redis_hmdp.controller;
+
+
+import mao.spring_boot_redis_hmdp.dto.Result;
+import mao.spring_boot_redis_hmdp.service.IFollowService;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import javax.annotation.Resource;
+
+
+@RestController
+@RequestMapping("/follow")
+public class FollowController
+{
+
+    @Resource
+    private IFollowService followService;
+
+    @PutMapping("/{id}/{isFollow}")
+    public Result follow(@PathVariable("id") Long followUserId, @PathVariable("isFollow") Boolean isFollow)
+    {
+        return followService.follow(followUserId, isFollow);
+    }
+
+    @PutMapping("/or/not/{id}")
+    public Result isFollow(@PathVariable("id") Long followUserId)
+    {
+        return followService.isFollow(followUserId);
+    }
+
+}
+
+```
+
+
+
+接口：
+
+```java
+package mao.spring_boot_redis_hmdp.service;
+
+
+import com.baomidou.mybatisplus.extension.service.IService;
+import mao.spring_boot_redis_hmdp.dto.Result;
+import mao.spring_boot_redis_hmdp.entity.Follow;
+
+
+public interface IFollowService extends IService<Follow>
+{
+
+    /**
+     * 关注或者取消关注，这取决于isFollow的值
+     *
+     * @param followUserId 被关注的用户的id
+     * @param isFollow     如果是关注，则为true，否则为false
+     * @return Result
+     */
+    Result follow(Long followUserId, Boolean isFollow);
+
+    /**
+     * 判断当前用户是否关注了 用户id为followUserId的人
+     *
+     * @param followUserId 被关注的用户的id
+     * @return Result
+     */
+    Result isFollow(Long followUserId);
+}
+
+```
+
+
+
+实现类：
+
+```java
+package mao.spring_boot_redis_hmdp.service.impl;
+
+
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import mao.spring_boot_redis_hmdp.dto.Result;
+import mao.spring_boot_redis_hmdp.entity.Follow;
+import mao.spring_boot_redis_hmdp.mapper.FollowMapper;
+import mao.spring_boot_redis_hmdp.service.IFollowService;
+import mao.spring_boot_redis_hmdp.utils.UserHolder;
+import org.springframework.stereotype.Service;
+
+
+@Service
+public class FollowServiceImpl extends ServiceImpl<FollowMapper, Follow> implements IFollowService
+{
+
+    @Override
+    public Result follow(Long followUserId, Boolean isFollow)
+    {
+        //空值判断
+        if (followUserId == null)
+        {
+            return Result.fail("关注的用户id不能为空");
+        }
+        if (isFollow == null)
+        {
+            return Result.fail("参数异常");
+        }
+        //获取当前用户的id
+        Long userID = UserHolder.getUser().getId();
+        //判断是关注还是取消关注
+        if (isFollow)
+        {
+            //是关注
+            //加关注
+            Follow follow = new Follow();
+            //设置关注的用户id
+            follow.setFollowUserId(followUserId);
+            //设置当前用户的id
+            follow.setUserId(userID);
+            //保存到数据库
+            boolean save = this.save(follow);
+            //判断是否关注失败
+            if (!save)
+            {
+                return Result.fail("关注失败");
+            }
+        }
+        else
+        {
+            //不是关注，取消关注
+            //删除数据库里的相关信息
+            QueryWrapper<Follow> queryWrapper = new QueryWrapper<>();
+            queryWrapper.eq("follow_user_id", followUserId).eq("user_id", userID);
+            //删除
+            boolean remove = this.remove(queryWrapper);
+            if (!remove)
+            {
+                return Result.fail("取消关注失败");
+            }
+        }
+        //返回
+        return Result.ok();
+
+    }
+
+    @Override
+    public Result isFollow(Long followUserId)
+    {
+        //获取当前用户的id
+        Long userID = UserHolder.getUser().getId();
+        //查数据库
+        QueryWrapper<Follow> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("follow_user_id", followUserId).eq("user_id", userID);
+        long count = this.count(queryWrapper);
+        //返回
+        return Result.ok(count > 0);
+    }
+}
+
+```
+
+
+
+## 共同关注
+
+修改userController：
+
+```java
+package mao.spring_boot_redis_hmdp.controller;
+
+
+import cn.hutool.core.bean.BeanUtil;
+import lombok.extern.slf4j.Slf4j;
+import mao.spring_boot_redis_hmdp.dto.LoginFormDTO;
+import mao.spring_boot_redis_hmdp.dto.Result;
+import mao.spring_boot_redis_hmdp.dto.UserDTO;
+import mao.spring_boot_redis_hmdp.entity.User;
+import mao.spring_boot_redis_hmdp.entity.UserInfo;
+import mao.spring_boot_redis_hmdp.service.IUserInfoService;
+import mao.spring_boot_redis_hmdp.service.IUserService;
+import mao.spring_boot_redis_hmdp.utils.UserHolder;
+import org.springframework.web.bind.annotation.*;
+
+import javax.annotation.Resource;
+import javax.servlet.http.HttpSession;
+
+
+@Slf4j
+@RestController
+@RequestMapping("/user")
+public class UserController
+{
+
+    @Resource
+    private IUserService userService;
+
+    @Resource
+    private IUserInfoService userInfoService;
+
+    /**
+     * 发送手机验证码
+     */
+    @PostMapping("code")
+    public Result sendCode(@RequestParam("phone") String phone, HttpSession session)
+    {
+        return userService.sendCode(phone, session);
+    }
+
+    /**
+     * 登录功能
+     *
+     * @param loginForm 登录参数，包含手机号、验证码；或者手机号、密码
+     */
+    @PostMapping("/login")
+    public Result login(@RequestBody LoginFormDTO loginForm, HttpSession session)
+    {
+        return userService.login(loginForm, session);
+    }
+
+    /**
+     * 登出功能
+     *
+     * @return 无
+     */
+    @PostMapping("/logout")
+    public Result logout()
+    {
+        // TODO 实现登出功能
+        return Result.fail("功能未完成");
+    }
+
+    @GetMapping("/me")
+    public Result me()
+    {
+        return Result.ok(UserHolder.getUser());
+    }
+
+    @GetMapping("/info/{id}")
+    public Result info(@PathVariable("id") Long userId)
+    {
+        // 查询详情
+        UserInfo info = userInfoService.getById(userId);
+        if (info == null)
+        {
+            // 没有详情，应该是第一次查看详情
+            return Result.ok();
+        }
+        info.setCreateTime(null);
+        info.setUpdateTime(null);
+        // 返回
+        return Result.ok(info);
+    }
+
+    /**
+     * 根据查询用户信息
+     *
+     * @param userId 用户的id
+     * @return Result
+     */
+    @GetMapping("/{id}")
+    public Result queryUserById(@PathVariable("id") Long userId)
+    {
+        //查询用户信息
+        User user = userService.getById(userId);
+        if (user == null)
+        {
+            return Result.ok();
+        }
+        //转换
+        UserDTO userDTO = BeanUtil.copyProperties(user, UserDTO.class);
+        return Result.ok(userDTO);
+    }
+}
+
+```
+
+修改BlogController：
+
+```java
+package mao.spring_boot_redis_hmdp.controller;
+
+
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import mao.spring_boot_redis_hmdp.dto.Result;
+import mao.spring_boot_redis_hmdp.dto.UserDTO;
+import mao.spring_boot_redis_hmdp.entity.Blog;
+import mao.spring_boot_redis_hmdp.service.IBlogService;
+import mao.spring_boot_redis_hmdp.utils.SystemConstants;
+import mao.spring_boot_redis_hmdp.utils.UserHolder;
+import org.springframework.web.bind.annotation.*;
+
+import javax.annotation.Resource;
+import java.util.List;
+
+
+@RestController
+@RequestMapping("/blog")
+public class BlogController
+{
+
+    @Resource
+    private IBlogService blogService;
+
+
+    @PostMapping
+    public Result saveBlog(@RequestBody Blog blog)
+    {
+        // 获取登录用户
+        UserDTO user = UserHolder.getUser();
+        blog.setUserId(user.getId());
+        // 保存探店博文
+        blogService.save(blog);
+        // 返回id
+        return Result.ok(blog.getId());
+    }
+
+    @PutMapping("/like/{id}")
+    public Result likeBlog(@PathVariable("id") Long id)
+    {
+        return blogService.likeBlog(id);
+    }
+
+    @GetMapping("/of/me")
+    public Result queryMyBlog(@RequestParam(value = "current", defaultValue = "1") Integer current)
+    {
+        // 获取登录用户
+        UserDTO user = UserHolder.getUser();
+        // 根据用户查询
+        Page<Blog> page = blogService.query()
+                .eq("user_id", user.getId()).page(new Page<>(current, SystemConstants.MAX_PAGE_SIZE));
+        // 获取当前页数据
+        List<Blog> records = page.getRecords();
+        return Result.ok(records);
+    }
+
+    @GetMapping("/hot")
+    public Result queryHotBlog(@RequestParam(value = "current", defaultValue = "1") Integer current)
+    {
+        return blogService.queryHotBlog(current);
+    }
+
+    @GetMapping("/{id}")
+    public Result queryBlogById(@PathVariable("id") String id)
+    {
+        return blogService.queryBlogById(id);
+    }
+
+    @GetMapping("/likes/{id}")
+    public Result queryBlogLikes(@PathVariable("id") String id)
+    {
+        return blogService.queryBlogLikes(id);
+    }
+
+    /**
+     * 查询用户的笔记信息
+     *
+     * @param current 当前页，如果不指定，则为第一页
+     * @param id      博主的id
+     * @return Result
+     */
+    @GetMapping("/of/user")
+    public Result queryBlogByUserId(@RequestParam(value = "current", defaultValue = "1") Integer current,
+                                    @RequestParam("id") Long id)
+    {
+        //根据用户查询
+        Page<Blog> page = blogService.query().
+                eq("user_id", id).
+                page(new Page<>(current, SystemConstants.MAX_PAGE_SIZE));
+        //获取当前页数据
+        List<Blog> records = page.getRecords();
+        //返回
+        return Result.ok(records);
+    }
+
+
+}
+
+```
+
+
+
+修改接口：
+
+```java
+package mao.spring_boot_redis_hmdp.service;
+
+
+import com.baomidou.mybatisplus.extension.service.IService;
+import mao.spring_boot_redis_hmdp.dto.Result;
+import mao.spring_boot_redis_hmdp.entity.Follow;
+
+
+public interface IFollowService extends IService<Follow>
+{
+
+    /**
+     * 关注或者取消关注，这取决于isFollow的值
+     *
+     * @param followUserId 被关注的用户的id
+     * @param isFollow     如果是关注，则为true，否则为false
+     * @return Result
+     */
+    Result follow(Long followUserId, Boolean isFollow);
+
+    /**
+     * 判断当前用户是否关注了 用户id为followUserId的人
+     *
+     * @param followUserId 被关注的用户的id
+     * @return Result
+     */
+    Result isFollow(Long followUserId);
+
+    /**
+     * 获取共同关注的人
+     *
+     * @param id 博主的id
+     * @return Result
+     */
+    Result followCommons(Long id);
+}
+
+```
+
+
+
+修改实现类：
+
+```java
+package mao.spring_boot_redis_hmdp.service.impl;
+
+
+import cn.hutool.core.bean.BeanUtil;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import mao.spring_boot_redis_hmdp.dto.Result;
+import mao.spring_boot_redis_hmdp.dto.UserDTO;
+import mao.spring_boot_redis_hmdp.entity.Follow;
+import mao.spring_boot_redis_hmdp.entity.User;
+import mao.spring_boot_redis_hmdp.mapper.FollowMapper;
+import mao.spring_boot_redis_hmdp.service.IFollowService;
+import mao.spring_boot_redis_hmdp.service.IUserService;
+import mao.spring_boot_redis_hmdp.utils.RedisConstants;
+import mao.spring_boot_redis_hmdp.utils.UserHolder;
+import org.redisson.mapreduce.Collector;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.stereotype.Service;
+
+import javax.annotation.Resource;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+
+@Service
+public class FollowServiceImpl extends ServiceImpl<FollowMapper, Follow> implements IFollowService
+{
+
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
+
+    @Resource
+    private IUserService userService;
+
+/*    @Override
+    public Result follow(Long followUserId, Boolean isFollow)
+    {
+        //空值判断
+        if (followUserId == null)
+        {
+            return Result.fail("关注的用户id不能为空");
+        }
+        if (isFollow == null)
+        {
+            return Result.fail("参数异常");
+        }
+        //获取当前用户的id
+        Long userID = UserHolder.getUser().getId();
+        //判断是关注还是取消关注
+        if (isFollow)
+        {
+            //是关注
+            //加关注
+            Follow follow = new Follow();
+            //设置关注的用户id
+            follow.setFollowUserId(followUserId);
+            //设置当前用户的id
+            follow.setUserId(userID);
+            //保存到数据库
+            boolean save = this.save(follow);
+            //判断是否关注失败
+            if (!save)
+            {
+                return Result.fail("关注失败");
+            }
+        }
+        else
+        {
+            //不是关注，取消关注
+            //删除数据库里的相关信息
+            QueryWrapper<Follow> queryWrapper = new QueryWrapper<>();
+            queryWrapper.eq("follow_user_id", followUserId).eq("user_id", userID);
+            //删除
+            boolean remove = this.remove(queryWrapper);
+            if (!remove)
+            {
+                return Result.fail("取消关注失败");
+            }
+        }
+        //返回
+        return Result.ok();
+    }*/
+
+    @Override
+    public Result follow(Long followUserId, Boolean isFollow)
+    {
+        //空值判断
+        if (followUserId == null)
+        {
+            return Result.fail("关注的用户id不能为空");
+        }
+        if (isFollow == null)
+        {
+            return Result.fail("参数异常");
+        }
+        //获取当前用户的id
+        Long userID = UserHolder.getUser().getId();
+        //判断是关注还是取消关注
+        if (isFollow)
+        {
+            //是关注
+            //加关注
+            Follow follow = new Follow();
+            //设置关注的用户id
+            follow.setFollowUserId(followUserId);
+            //设置当前用户的id
+            follow.setUserId(userID);
+            //保存到数据库
+            boolean save = this.save(follow);
+            //判断是否关注失败
+            if (!save)
+            {
+                return Result.fail("关注失败");
+            }
+            //关注成功，保存到redis
+            //登录用户的key
+            String redisUserKey = RedisConstants.FOLLOW_KEY + userID;
+            //保存
+            stringRedisTemplate.opsForSet().add(redisUserKey, followUserId.toString());
+        }
+        else
+        {
+            //不是关注，取消关注
+            //删除数据库里的相关信息
+            QueryWrapper<Follow> queryWrapper = new QueryWrapper<>();
+            queryWrapper.eq("follow_user_id", followUserId).eq("user_id", userID);
+            //删除
+            boolean remove = this.remove(queryWrapper);
+            if (!remove)
+            {
+                return Result.fail("取消关注失败");
+            }
+            //删除成功，移除redis相关数据
+            //登录用户的key
+            String redisUserKey = RedisConstants.FOLLOW_KEY + userID;
+            //移除
+            stringRedisTemplate.opsForSet().remove(redisUserKey, followUserId);
+        }
+        //返回
+        return Result.ok();
+    }
+
+    @Override
+    public Result isFollow(Long followUserId)
+    {
+        //获取当前用户的id
+        Long userID = UserHolder.getUser().getId();
+        //查数据库
+        QueryWrapper<Follow> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("follow_user_id", followUserId).eq("user_id", userID);
+        long count = this.count(queryWrapper);
+        //返回
+        return Result.ok(count > 0);
+    }
+
+    @Override
+    public Result followCommons(Long id)
+    {
+        //获取当前用户的id
+        Long userID = UserHolder.getUser().getId();
+        //获得redisKey
+        //登录用户的key
+        String redisUserKey = RedisConstants.FOLLOW_KEY + userID;
+        //博主的key
+        String redisBlogKey = RedisConstants.FOLLOW_KEY + id;
+        //获得交集
+        Set<String> intersect = stringRedisTemplate.opsForSet().intersect(redisUserKey, redisBlogKey);
+        //判断是否为空
+        if (intersect == null)
+        {
+            //返回空集合
+            return Result.ok(Collections.emptyList());
+        }
+        if (intersect.size() == 0)
+        {
+            //返回空集合
+            return Result.ok(Collections.emptyList());
+        }
+        //过滤获得id
+        List<Long> ids = intersect.stream().map(Long::valueOf).collect(Collectors.toList());
+        //查询
+        List<User> users = userService.listByIds(ids);
+        //转换
+        List<UserDTO> collect = users.stream()
+                .map(user -> (BeanUtil.copyProperties(user, UserDTO.class)))
+                .collect(Collectors.toList());
+        //返回
+        return Result.ok(collect);
+    }
+}
+
+```
+
+
+
+
+
+## 关注推送
+

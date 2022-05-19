@@ -5070,3 +5070,975 @@ public class FollowServiceImpl extends ServiceImpl<FollowMapper, Follow> impleme
 
 ## 关注推送
 
+### 是什么？
+
+关注推送也叫做Feed流，直译为投喂。为用户持续的提供“沉浸式”的体验，通过无限下拉刷新获取新的信息
+
+### Feed流的模式
+
+#### Timeline
+
+不做内容筛选，简单的按照内容发布时间排序，常用于好友或关注。例如朋友圈
+
+* 优点：信息全面，不会有缺失。并且实现也相对简单
+* 缺点：信息噪音较多，用户不一定感兴趣，内容获取效率低
+
+#### 智能排序
+
+利用智能算法屏蔽掉违规的、用户不感兴趣的内容，推送用户感兴趣的信息来吸引用户
+
+* 优点：投喂用户感兴趣信息，用户粘度很高，容易沉迷
+* 缺点：如果算法不精准，可能起到反作用
+
+
+
+#### Timeline的三种实现模式
+
+##### 拉模式
+
+拉模式也叫做读扩散。假设有三个人，分别是张三、李四、王五，这三个人分别会在自己的账号发布自己的笔记或者视频，在这里我们统一称之为消息，这三个人发布的所有的消息都会被发送到发件箱中，发送到发件箱中的消息除了消息本身之外，还需要带有时间戳。粉丝赵六会有一个收件箱，平时收件箱是空的，只有他在读取消息时，才会把赵六关注的所有人的发件箱中的消息拉取到他的收件箱中，拉取到收件箱后，消息会按照携带的时间戳进行排序，然后赵六就可以读取消息了。
+
+优点：
+
+* 节省内存空间。收件箱中的消息在读取完后就会被清空，下次需要读取的时候会重新从所有关注人的发件箱中拉取。消息只保存了一份。
+
+缺点：
+
+* 每次读取消息都要重新拉取发件箱中的消息，然后再做排序，比较耗时。
+
+
+
+##### 推模式
+
+推模式也叫做写扩散。假设现在有两个 up 主：张三、李四，有三个粉丝：粉丝1、粉丝2、粉丝3，粉丝1关注了张三，粉丝2和3都关注了张三和李四，如果张三此时想要发送消息，那么这条消息会直接推送到张三的所有粉丝的收件箱中，而李四发送的消息也会被推送到粉丝2和3的收件箱中，收件箱收到消息后会对所有的消息进行排序，粉丝在读取消息时，就已经是排序好的消息了。这样的一个好处就是延时低，不必每次读取时都需要重新拉取消息。但这种方式内存占用会比较高，up 主每次发消息都要同步所有的粉丝，如果粉丝数过多，超过几百万，就需要复制几百万份。
+
+优点：
+
+* 延时低，不必每次读取时都需要重新拉取消息
+
+缺点：
+
+* 内存占用会比较高
+
+
+
+##### 推拉结合
+
+推拉结合也叫读写混合，兼具推和拉两种模式的优点。
+
+普通粉丝人数众多，但是活跃度较低，读取消息的频率也就低，可采用拉模式；
+而活跃粉丝人数少，但是活跃度高，读取消息的频率高，可采用推模式。
+
+大 V 发送消息时，会直接将消息推送到活跃粉丝的发件箱中，而针对于普通粉丝，消息会先发送到发件箱中，当普通粉丝读取消息时，会直接从发件箱中拉取。
+
+
+
+
+
+### 基于推模式实现关注推送功能
+
+#### 发送
+
+BlogController:
+
+```java
+package mao.spring_boot_redis_hmdp.controller;
+
+
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import mao.spring_boot_redis_hmdp.dto.Result;
+import mao.spring_boot_redis_hmdp.dto.UserDTO;
+import mao.spring_boot_redis_hmdp.entity.Blog;
+import mao.spring_boot_redis_hmdp.service.IBlogService;
+import mao.spring_boot_redis_hmdp.utils.SystemConstants;
+import mao.spring_boot_redis_hmdp.utils.UserHolder;
+import org.springframework.web.bind.annotation.*;
+
+import javax.annotation.Resource;
+import java.util.List;
+
+
+@RestController
+@RequestMapping("/blog")
+public class BlogController
+{
+
+    @Resource
+    private IBlogService blogService;
+
+
+    /**
+     * 保存（发布）博客信息
+     *
+     * @param blog Blog
+     * @return Result
+     */
+    @PostMapping
+    public Result saveBlog(@RequestBody Blog blog)
+    {
+        return blogService.saveBlog(blog);
+    }
+
+    @PutMapping("/like/{id}")
+    public Result likeBlog(@PathVariable("id") Long id)
+    {
+        return blogService.likeBlog(id);
+    }
+
+    @GetMapping("/of/me")
+    public Result queryMyBlog(@RequestParam(value = "current", defaultValue = "1") Integer current)
+    {
+        // 获取登录用户
+        UserDTO user = UserHolder.getUser();
+        // 根据用户查询
+        Page<Blog> page = blogService.query()
+                .eq("user_id", user.getId()).page(new Page<>(current, SystemConstants.MAX_PAGE_SIZE));
+        // 获取当前页数据
+        List<Blog> records = page.getRecords();
+        return Result.ok(records);
+    }
+
+    @GetMapping("/hot")
+    public Result queryHotBlog(@RequestParam(value = "current", defaultValue = "1") Integer current)
+    {
+        return blogService.queryHotBlog(current);
+    }
+
+    @GetMapping("/{id}")
+    public Result queryBlogById(@PathVariable("id") String id)
+    {
+        return blogService.queryBlogById(id);
+    }
+
+    @GetMapping("/likes/{id}")
+    public Result queryBlogLikes(@PathVariable("id") String id)
+    {
+        return blogService.queryBlogLikes(id);
+    }
+
+    /**
+     * 查询用户的笔记信息
+     *
+     * @param current 当前页，如果不指定，则为第一页
+     * @param id      博主的id
+     * @return Result
+     */
+    @GetMapping("/of/user")
+    public Result queryBlogByUserId(@RequestParam(value = "current", defaultValue = "1") Integer current,
+                                    @RequestParam("id") Long id)
+    {
+        //根据用户查询
+        Page<Blog> page = blogService.query().
+                eq("user_id", id).
+                page(new Page<>(current, SystemConstants.MAX_PAGE_SIZE));
+        //获取当前页数据
+        List<Blog> records = page.getRecords();
+        //返回
+        return Result.ok(records);
+    }
+
+
+}
+
+```
+
+
+
+接口：
+
+```java
+package mao.spring_boot_redis_hmdp.service;
+
+
+import com.baomidou.mybatisplus.extension.service.IService;
+import mao.spring_boot_redis_hmdp.dto.Result;
+import mao.spring_boot_redis_hmdp.entity.Blog;
+
+
+public interface IBlogService extends IService<Blog>
+{
+    /**
+     * 查询热门的探店笔记
+     *
+     * @param current 当前页
+     * @return Result
+     */
+    Result queryHotBlog(Integer current);
+
+    /**
+     * 根据id进行查询
+     *
+     * @param id id
+     * @return Result
+     */
+    Result queryBlogById(String id);
+
+    /**
+     * 点赞功能
+     *
+     * @param id id
+     * @return result
+     */
+    Result likeBlog(Long id);
+
+    /**
+     * 点赞排行榜
+     *
+     * @param id id
+     * @return Result
+     */
+    Result queryBlogLikes(String id);
+
+    /**
+     * 保存（发布）博客信息
+     *
+     * @param blog Blog
+     * @return Result
+     */
+    Result saveBlog(Blog blog);
+}
+
+```
+
+
+
+实现类：
+
+```java
+package mao.spring_boot_redis_hmdp.service.impl;
+
+
+import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.util.BooleanUtil;
+import cn.hutool.core.util.StrUtil;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import mao.spring_boot_redis_hmdp.dto.Result;
+import mao.spring_boot_redis_hmdp.dto.UserDTO;
+import mao.spring_boot_redis_hmdp.entity.Blog;
+import mao.spring_boot_redis_hmdp.entity.Follow;
+import mao.spring_boot_redis_hmdp.entity.User;
+import mao.spring_boot_redis_hmdp.mapper.BlogMapper;
+import mao.spring_boot_redis_hmdp.service.IBlogService;
+import mao.spring_boot_redis_hmdp.service.IFollowService;
+import mao.spring_boot_redis_hmdp.service.IUserService;
+import mao.spring_boot_redis_hmdp.utils.RedisConstants;
+import mao.spring_boot_redis_hmdp.utils.RedisUtils;
+import mao.spring_boot_redis_hmdp.utils.SystemConstants;
+import mao.spring_boot_redis_hmdp.utils.UserHolder;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.stereotype.Service;
+
+import javax.annotation.Resource;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+
+
+@Service("blogService")
+public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IBlogService
+{
+
+    @Resource
+    private IUserService userService;
+
+    @Resource
+    private RedisUtils redisUtils;
+
+    @Resource
+    private IFollowService followService;
+
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
+
+    @Override
+    public Result queryHotBlog(Integer current)
+    {
+        // 根据用户查询
+        Page<Blog> page = query()
+                .orderByDesc("liked")
+                .page(new Page<>(current, SystemConstants.MAX_PAGE_SIZE));
+        // 获取当前页数据
+        List<Blog> records = page.getRecords();
+        // 查询用户
+        records.forEach(blog ->
+        {
+            Long userId = blog.getUserId();
+            User user = userService.getById(userId);
+            blog.setName(user.getNickName());
+            blog.setIcon(user.getIcon());
+        });
+        return Result.ok(records);
+    }
+
+    @Override
+    public Result queryBlogById(String id)
+    {
+        //查询
+        //Blog blog = this.getById(id);
+        Blog blog = redisUtils.query(RedisConstants.BLOG_KEY,
+                RedisConstants.LOCK_BLOG_KEY, id,
+                Blog.class, this::getById,
+                RedisConstants.CACHE_BLOG_TTL,
+                TimeUnit.MINUTES, 120);
+        //判断是否存在
+        if (blog == null)
+        {
+            //不存在，返回
+            return Result.fail("该笔记信息不存在");
+        }
+        //存在
+        //填充用户信息
+        //获得用户id
+        Long userId = blog.getUserId();
+        //查询
+        User user = userService.getById(userId);
+        //填充
+        blog.setIcon(user.getIcon());
+        blog.setName(user.getNickName());
+        //返回
+        return Result.ok(blog);
+    }
+
+    @Override
+    public Result likeBlog(Long id)
+    {
+        //获取用户信息
+        UserDTO user = UserHolder.getUser();
+        //判断用户是否已经点赞(检查设置在key是否包含value)
+        Boolean member = stringRedisTemplate.opsForSet().isMember(RedisConstants.BLOG_LIKED_KEY + id, user.getId().toString());
+        if (BooleanUtil.isFalse(member))
+        {
+            //未点赞
+            //数据库点赞数量+1
+            boolean update = update().setSql("liked = liked + 1").eq("id", id).update();
+            //判断是否成功
+            if (update)
+            {
+                //成功
+                //让redis数据过期
+                stringRedisTemplate.delete(RedisConstants.BLOG_KEY);
+                //保存用户到Redis的set集合
+                stringRedisTemplate.opsForSet().add(RedisConstants.BLOG_LIKED_KEY + id, user.getId().toString());
+            }
+
+        }
+        else
+        {
+            //已点赞，取消点赞
+            //数据库点赞数量-1
+            boolean update = update().setSql("liked = liked - 1").eq("id", id).update();
+            //判断是否成功
+            if (update)
+            {
+                //成功
+                //让redis数据过期
+                stringRedisTemplate.delete(RedisConstants.BLOG_KEY);
+                //移除用户
+                stringRedisTemplate.delete(RedisConstants.BLOG_LIKED_KEY + id);
+            }
+        }
+
+        return Result.ok();
+    }
+
+    @Override
+    public Result queryBlogLikes(String id)
+    {
+        //获得key
+        String redisKey = RedisConstants.BLOG_LIKED_KEY + id;
+        //查询前5名的点赞的用户(从排序集中获取start和end之间的元素)
+        Set<String> range = stringRedisTemplate.opsForZSet().range(redisKey, 0, 4);
+        //判断
+        if (range == null)
+        {
+            //返回空集合
+            return Result.ok(Collections.emptyList());
+        }
+        //非空
+        //解析出用户的id
+        List<Long> ids = range.stream().map(Long::valueOf).collect(Collectors.toList());
+        //拼接
+        String join = StrUtil.join(",", ids);
+        //查询数据库
+        List<User> users = userService.query().in("id", ids).last("order by filed(id, " + join + ")").list();
+        //转换成dto
+        List<UserDTO> dtoList = users.stream().map(user -> BeanUtil.copyProperties(user, UserDTO.class)).
+                collect(Collectors.toList());
+        //返回数据
+        return Result.ok(dtoList);
+    }
+
+    @Override
+    public Result saveBlog(Blog blog)
+    {
+        //获取登录用户
+        UserDTO user = UserHolder.getUser();
+        blog.setUserId(user.getId());
+        //保存探店博文
+        boolean save = this.save(blog);
+        //判断是否保存成功
+        if (!save)
+        {
+            //保存失败
+            return Result.ok();
+        }
+        //保存成功
+        //先查询笔记作者的所有粉丝
+        QueryWrapper<Follow> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("follow_user_id", user.getId());
+        List<Follow> followList = followService.list(queryWrapper);
+        //判断是否为空
+        if (followList == null || followList.isEmpty())
+        {
+            //为空，无粉丝或者为null
+            return Result.ok(blog.getId());
+        }
+        //不为空
+        //推送给所有粉丝
+        for (Follow follow : followList)
+        {
+            //获得用户id
+            Long userId = follow.getUserId();
+            //放入redis的zset集合里
+            stringRedisTemplate.opsForZSet().add(RedisConstants.FEED_KEY + userId,
+                    blog.getId().toString(),
+                    System.currentTimeMillis());
+        }
+        //返回
+        return Result.ok(blog.getId());
+    }
+}
+
+```
+
+
+
+#### 用户读取
+
+实现滚动分页的命令：
+
+```sh
+ZREVRANGEBYSCORE key max min [WITHSCORES] [LIMIT offset count]
+```
+
+返回有序集 key 中， score 值介于 max 和 min 之间(默认包括等于 max 或 min )的所有的成员。有序集成员按 score 值递减(从大到小)的次序排列。WITHSCORES 表示是否返回成员分数。LIMIT 表示是否分页，如果带有 LIMIT，则后面必须带有offset、count，offset表示偏移量（相对于max值而言），count 表示结果数量。max 值是上一次查询结果中的最小分数（即时间戳）。而 offset 的取值也与上一次查询结果中的最小分数有关，如果上一次查询结果中的最小分数值重复多次出现，offset的值就应该为最小分数重复出现的次数。
+
+
+
+结果类：
+
+```java
+package mao.spring_boot_redis_hmdp.dto;
+
+import lombok.Data;
+
+import java.util.List;
+
+@Data
+public class ScrollResult
+{
+    /**
+     * list集合，用于放分页数据
+     */
+    private List<?> list;
+    /**
+     * 最小的时间戳
+     */
+    private Long minTime;
+    /**
+     * 偏移量
+     */
+    private Integer offset;
+}
+
+```
+
+
+
+BlogController:
+
+```java
+package mao.spring_boot_redis_hmdp.controller;
+
+
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import mao.spring_boot_redis_hmdp.dto.Result;
+import mao.spring_boot_redis_hmdp.dto.UserDTO;
+import mao.spring_boot_redis_hmdp.entity.Blog;
+import mao.spring_boot_redis_hmdp.service.IBlogService;
+import mao.spring_boot_redis_hmdp.utils.SystemConstants;
+import mao.spring_boot_redis_hmdp.utils.UserHolder;
+import org.springframework.web.bind.annotation.*;
+
+import javax.annotation.Resource;
+import java.util.List;
+
+
+@RestController
+@RequestMapping("/blog")
+public class BlogController
+{
+
+    @Resource
+    private IBlogService blogService;
+
+
+    /**
+     * 保存（发布）博客信息
+     *
+     * @param blog Blog
+     * @return Result
+     */
+    @PostMapping
+    public Result saveBlog(@RequestBody Blog blog)
+    {
+        return blogService.saveBlog(blog);
+    }
+
+    @PutMapping("/like/{id}")
+    public Result likeBlog(@PathVariable("id") Long id)
+    {
+        return blogService.likeBlog(id);
+    }
+
+    @GetMapping("/of/me")
+    public Result queryMyBlog(@RequestParam(value = "current", defaultValue = "1") Integer current)
+    {
+        // 获取登录用户
+        UserDTO user = UserHolder.getUser();
+        // 根据用户查询
+        Page<Blog> page = blogService.query()
+                .eq("user_id", user.getId()).page(new Page<>(current, SystemConstants.MAX_PAGE_SIZE));
+        // 获取当前页数据
+        List<Blog> records = page.getRecords();
+        return Result.ok(records);
+    }
+
+    @GetMapping("/hot")
+    public Result queryHotBlog(@RequestParam(value = "current", defaultValue = "1") Integer current)
+    {
+        return blogService.queryHotBlog(current);
+    }
+
+    @GetMapping("/{id}")
+    public Result queryBlogById(@PathVariable("id") String id)
+    {
+        return blogService.queryBlogById(id);
+    }
+
+    @GetMapping("/likes/{id}")
+    public Result queryBlogLikes(@PathVariable("id") String id)
+    {
+        return blogService.queryBlogLikes(id);
+    }
+
+    /**
+     * 查询用户的笔记信息
+     *
+     * @param current 当前页，如果不指定，则为第一页
+     * @param id      博主的id
+     * @return Result
+     */
+    @GetMapping("/of/user")
+    public Result queryBlogByUserId(@RequestParam(value = "current", defaultValue = "1") Integer current,
+                                    @RequestParam("id") Long id)
+    {
+        //根据用户查询
+        Page<Blog> page = blogService.query().
+                eq("user_id", id).
+                page(new Page<>(current, SystemConstants.MAX_PAGE_SIZE));
+        //获取当前页数据
+        List<Blog> records = page.getRecords();
+        //返回
+        return Result.ok(records);
+    }
+
+    /**
+     * 从收件箱里取关注的人发的信息
+     *
+     * @param max    时间戳，第一页为当前时间，第n页为第n-1页最后一条数据的时间戳
+     * @param offset 偏移量，第一页为0，不是第一页，取决于上一页最后一个时间戳的条数
+     * @return Result
+     */
+    @GetMapping("/of/follow")
+    public Result queryBlogOfFollow(@RequestParam("lastId") Long max,
+                                    @RequestParam(value = "offset", defaultValue = "0") Integer offset)
+    {
+        return blogService.queryBlogOfFollow(max, offset);
+    }
+
+}
+
+```
+
+
+
+接口：
+
+```java
+package mao.spring_boot_redis_hmdp.service;
+
+
+import com.baomidou.mybatisplus.extension.service.IService;
+import mao.spring_boot_redis_hmdp.dto.Result;
+import mao.spring_boot_redis_hmdp.entity.Blog;
+
+
+public interface IBlogService extends IService<Blog>
+{
+    /**
+     * 查询热门的探店笔记
+     *
+     * @param current 当前页
+     * @return Result
+     */
+    Result queryHotBlog(Integer current);
+
+    /**
+     * 根据id进行查询
+     *
+     * @param id id
+     * @return Result
+     */
+    Result queryBlogById(String id);
+
+    /**
+     * 点赞功能
+     *
+     * @param id id
+     * @return result
+     */
+    Result likeBlog(Long id);
+
+    /**
+     * 点赞排行榜
+     *
+     * @param id id
+     * @return Result
+     */
+    Result queryBlogLikes(String id);
+
+    /**
+     * 保存（发布）博客信息
+     *
+     * @param blog Blog
+     * @return Result
+     */
+    Result saveBlog(Blog blog);
+
+    /**
+     * 从收件箱里取关注的人发的信息
+     *
+     * @param max    时间戳，第一页为当前时间，第n页为第n-1页最后一条数据的时间戳
+     * @param offset 偏移量，第一页为0，不是第一页，取决于上一页最后一个时间戳的条数
+     * @return Result
+     */
+    Result queryBlogOfFollow(Long max, Integer offset);
+}
+
+```
+
+
+
+实现类：
+
+```java
+package mao.spring_boot_redis_hmdp.service.impl;
+
+
+import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.util.BooleanUtil;
+import cn.hutool.core.util.StrUtil;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import mao.spring_boot_redis_hmdp.dto.Result;
+import mao.spring_boot_redis_hmdp.dto.ScrollResult;
+import mao.spring_boot_redis_hmdp.dto.UserDTO;
+import mao.spring_boot_redis_hmdp.entity.Blog;
+import mao.spring_boot_redis_hmdp.entity.Follow;
+import mao.spring_boot_redis_hmdp.entity.User;
+import mao.spring_boot_redis_hmdp.mapper.BlogMapper;
+import mao.spring_boot_redis_hmdp.service.IBlogService;
+import mao.spring_boot_redis_hmdp.service.IFollowService;
+import mao.spring_boot_redis_hmdp.service.IUserService;
+import mao.spring_boot_redis_hmdp.utils.RedisConstants;
+import mao.spring_boot_redis_hmdp.utils.RedisUtils;
+import mao.spring_boot_redis_hmdp.utils.SystemConstants;
+import mao.spring_boot_redis_hmdp.utils.UserHolder;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ZSetOperations;
+import org.springframework.stereotype.Service;
+
+import javax.annotation.Resource;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+
+
+@Service("blogService")
+public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IBlogService
+{
+
+    @Resource
+    private IUserService userService;
+
+    @Resource
+    private RedisUtils redisUtils;
+
+    @Resource
+    private IFollowService followService;
+
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
+
+    @Override
+    public Result queryHotBlog(Integer current)
+    {
+        // 根据用户查询
+        Page<Blog> page = query()
+                .orderByDesc("liked")
+                .page(new Page<>(current, SystemConstants.MAX_PAGE_SIZE));
+        // 获取当前页数据
+        List<Blog> records = page.getRecords();
+        // 查询用户
+        records.forEach(blog ->
+        {
+            Long userId = blog.getUserId();
+            User user = userService.getById(userId);
+            blog.setName(user.getNickName());
+            blog.setIcon(user.getIcon());
+        });
+        return Result.ok(records);
+    }
+
+    @Override
+    public Result queryBlogById(String id)
+    {
+        //查询
+        //Blog blog = this.getById(id);
+        Blog blog = redisUtils.query(RedisConstants.BLOG_KEY,
+                RedisConstants.LOCK_BLOG_KEY, id,
+                Blog.class, this::getById,
+                RedisConstants.CACHE_BLOG_TTL,
+                TimeUnit.MINUTES, 120);
+        //判断是否存在
+        if (blog == null)
+        {
+            //不存在，返回
+            return Result.fail("该笔记信息不存在");
+        }
+        //存在
+        //填充用户信息
+        //获得用户id
+        Long userId = blog.getUserId();
+        //查询
+        User user = userService.getById(userId);
+        //填充
+        blog.setIcon(user.getIcon());
+        blog.setName(user.getNickName());
+        //返回
+        return Result.ok(blog);
+    }
+
+    @Override
+    public Result likeBlog(Long id)
+    {
+        //获取用户信息
+        UserDTO user = UserHolder.getUser();
+        //判断用户是否已经点赞(检查设置在key是否包含value)
+        Boolean member = stringRedisTemplate.opsForSet().isMember(RedisConstants.BLOG_LIKED_KEY + id, user.getId().toString());
+        if (BooleanUtil.isFalse(member))
+        {
+            //未点赞
+            //数据库点赞数量+1
+            boolean update = update().setSql("liked = liked + 1").eq("id", id).update();
+            //判断是否成功
+            if (update)
+            {
+                //成功
+                //让redis数据过期
+                stringRedisTemplate.delete(RedisConstants.BLOG_KEY);
+                //保存用户到Redis的set集合
+                stringRedisTemplate.opsForSet().add(RedisConstants.BLOG_LIKED_KEY + id, user.getId().toString());
+            }
+
+        }
+        else
+        {
+            //已点赞，取消点赞
+            //数据库点赞数量-1
+            boolean update = update().setSql("liked = liked - 1").eq("id", id).update();
+            //判断是否成功
+            if (update)
+            {
+                //成功
+                //让redis数据过期
+                stringRedisTemplate.delete(RedisConstants.BLOG_KEY);
+                //移除用户
+                stringRedisTemplate.delete(RedisConstants.BLOG_LIKED_KEY + id);
+            }
+        }
+
+        return Result.ok();
+    }
+
+    @Override
+    public Result queryBlogLikes(String id)
+    {
+        //获得key
+        String redisKey = RedisConstants.BLOG_LIKED_KEY + id;
+        //查询前5名的点赞的用户(从排序集中获取start和end之间的元素)
+        Set<String> range = stringRedisTemplate.opsForZSet().range(redisKey, 0, 4);
+        //判断
+        if (range == null)
+        {
+            //返回空集合
+            return Result.ok(Collections.emptyList());
+        }
+        //非空
+        //解析出用户的id
+        List<Long> ids = range.stream().map(Long::valueOf).collect(Collectors.toList());
+        //拼接
+        String join = StrUtil.join(",", ids);
+        //查询数据库
+        List<User> users = userService.query().in("id", ids).last("order by filed(id, " + join + ")").list();
+        //转换成dto
+        List<UserDTO> dtoList = users.stream().map(user -> BeanUtil.copyProperties(user, UserDTO.class)).
+                collect(Collectors.toList());
+        //返回数据
+        return Result.ok(dtoList);
+    }
+
+    @Override
+    public Result saveBlog(Blog blog)
+    {
+        //获取登录用户
+        UserDTO user = UserHolder.getUser();
+        blog.setUserId(user.getId());
+        //保存探店博文
+        boolean save = this.save(blog);
+        //判断是否保存成功
+        if (!save)
+        {
+            //保存失败
+            return Result.ok();
+        }
+        //保存成功
+        //先查询笔记作者的所有粉丝
+        QueryWrapper<Follow> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("follow_user_id", user.getId());
+        List<Follow> followList = followService.list(queryWrapper);
+        //判断是否为空
+        if (followList == null || followList.isEmpty())
+        {
+            //为空，无粉丝或者为null
+            return Result.ok(blog.getId());
+        }
+        //不为空
+        //推送给所有粉丝
+        for (Follow follow : followList)
+        {
+            //获得用户id
+            Long userId = follow.getUserId();
+            //放入redis的zset集合里
+            stringRedisTemplate.opsForZSet().add(RedisConstants.FEED_KEY + userId,
+                    blog.getId().toString(),
+                    System.currentTimeMillis());
+        }
+        //返回
+        return Result.ok(blog.getId());
+    }
+
+    @Override
+    public Result queryBlogOfFollow(Long max, Integer offset)
+    {
+        //获得当前登录用户
+        UserDTO user = UserHolder.getUser();
+        //key
+        String redisKey = RedisConstants.FEED_KEY + user.getId();
+        //从redis收件箱里取数据
+        //参数2：最小分数 参数3：最大分数 参数4：偏移量 参数5：每次取几条
+        Set<ZSetOperations.TypedTuple<String>> typedTuples = stringRedisTemplate.opsForZSet().
+                reverseRangeByScoreWithScores(redisKey, 0, max, offset, 3);
+        //TypedTuple里有V getValue();  和Double getScore(); 方法
+        //判断是否为空
+        if (typedTuples == null)
+        {
+            //返回空集合
+            return Result.ok(Collections.emptyList());
+        }
+        //不为空
+        //最后一个时间戳重复的数量
+        int count = 1;
+        //最小时间戳
+        long minTime = 0;
+        List<Long> ids = new ArrayList<>(typedTuples.size());
+        //遍历
+        for (ZSetOperations.TypedTuple<String> typedTuple : typedTuples)
+        {
+            //加入到list集合里
+            ids.add(Long.valueOf(Objects.requireNonNull(typedTuple.getValue())));
+            //获得时间戳
+            long time = Objects.requireNonNull(typedTuple.getScore()).longValue();
+            if (time == minTime)
+            {
+                //时间是最小时间，计数器+1
+                count++;
+            }
+            else
+            {
+                //不是最小时间，刷新最小时间，计数器清成1（包含自己）
+                minTime = time;
+                count = 1;
+            }
+        }
+        String join = StrUtil.join(",", ids);
+        //查数据库
+        List<Blog> blogs = this.query().in("id", ids).last("order by field (id," + join + ")").list();
+        //封装结果
+        ScrollResult scrollResult = new ScrollResult();
+        scrollResult.setList(blogs);
+        scrollResult.setMinTime(minTime);
+        scrollResult.setOffset(count);
+        //返回
+        return Result.ok(scrollResult);
+    }
+}
+
+```
+
+
+
+
+
+
+
+# 实现查看附近商铺功能
+
+##  GEO数据结构
+
+### 是什么？
+
+GEO就是Geolocation的简写形式，代表地理坐标。Redis在3.2版本中加入了对GEO的支持，允许存储地理坐标信息， 帮助我们根据经纬度来检索数据
+
+### 常用命令
+
+* GEOADD：添加一个地理空间信息，包含：经度（longitude）、纬度（latitude）、值（member）
+* GEODIST：计算指定的两个点之间的距离并返回
+* GEOHASH：将指定 member 的坐标转为 hash 字符串形式并返回
+* GEOPOS：返回指定 member 的坐标
+* GEORADIUS：指定圆心、半径，找到该圆内包含的所有 member，并按照与圆心之间的距离排序后返回。6.2 以后已废弃
+* GEOSEARCH：在指定范围内搜索 member，并按照与指定点之间的距离排序后返回。范围可以是圆形或矩形。6.2 新功能
+* GEOSEARCHSTORE：与 GEOSEARCH 功能一致，不过可以把结果存储到一个指定的 key。6.2 新功能
+
+
+
+
+
+## 实现
+
