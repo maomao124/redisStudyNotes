@@ -1,6 +1,14 @@
 # --redis实战学习笔记--
 
 
+
+----
+* 注意：此文件里的部分代码有问题，后面我更新了项目，但是没有更新此文件，应该以项目为准
+* 项目地址：[点击进入](https://github.com/maomao124/spring_boot_redis_hmdp_final)
+----
+
+
+
 # 登录
 
 ## 基于redis实现登录功能
@@ -6041,4 +6049,1499 @@ GEO就是Geolocation的简写形式，代表地理坐标。Redis在3.2版本中�
 
 
 ## 实现
+
+将店铺信息加载到redis:
+
+```java
+package mao.spring_boot_redis_hmdp;
+
+import mao.spring_boot_redis_hmdp.entity.Shop;
+import mao.spring_boot_redis_hmdp.service.IShopService;
+import mao.spring_boot_redis_hmdp.utils.RedisConstants;
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.geo.Point;
+import org.springframework.data.redis.connection.RedisGeoCommands;
+import org.springframework.data.redis.core.StringRedisTemplate;
+
+import javax.annotation.Resource;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+@SpringBootTest
+class SpringBootRedisHmdp
+{
+
+    @Resource
+    private IShopService shopService;
+
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
+
+    @Test
+    void contextLoads()
+    {
+    }
+
+    @Test
+    void load()
+    {
+        //查询店铺信息
+        List<Shop> list = shopService.list();
+        //店铺分组，放入到一个集合中
+        Map<Long, List<Shop>> collect = list.stream().collect(Collectors.groupingBy(Shop::getTypeId));
+        //分批写入redis
+        for (Long typeId : collect.keySet())
+        {
+            //值
+            List<Shop> shops = collect.get(typeId);
+            List<RedisGeoCommands.GeoLocation<String>> locations = new ArrayList<>(shops.size());
+            for (Shop shop : shops)
+            {
+                locations.add(new RedisGeoCommands.GeoLocation<>
+                        (shop.getId().toString(), new Point(shop.getX(), shop.getY())));
+            }
+            //写入redis
+            stringRedisTemplate.opsForGeo().add(RedisConstants.SHOP_GEO_KEY + typeId, locations);
+        }
+    }
+}
+
+```
+
+
+
+ShopController：
+
+```java
+package mao.spring_boot_redis_hmdp.controller;
+
+
+import cn.hutool.core.util.StrUtil;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import mao.spring_boot_redis_hmdp.dto.Result;
+import mao.spring_boot_redis_hmdp.entity.Shop;
+import mao.spring_boot_redis_hmdp.service.IShopService;
+import mao.spring_boot_redis_hmdp.utils.SystemConstants;
+import org.springframework.web.bind.annotation.*;
+
+import javax.annotation.Resource;
+
+
+@RestController
+@RequestMapping("/shop")
+public class ShopController
+{
+
+    @Resource
+    public IShopService shopService;
+
+    /**
+     * 根据id查询商铺信息
+     *
+     * @param id 商铺id
+     * @return 商铺详情数据
+     */
+    @GetMapping("/{id}")
+    public Result queryShopById(@PathVariable("id") Long id)
+    {
+        return Result.ok(shopService.queryShopById(id));
+    }
+
+    /**
+     * 新增商铺信息
+     *
+     * @param shop 商铺数据
+     * @return 商铺id
+     */
+    @PostMapping
+    public Result saveShop(@RequestBody Shop shop)
+    {
+        // 写入数据库
+        shopService.save(shop);
+        // 返回店铺id
+        return Result.ok(shop.getId());
+    }
+
+    /**
+     * 更新商铺信息
+     *
+     * @param shop 商铺数据
+     * @return 无
+     */
+    @PutMapping
+    public Result updateShop(@RequestBody Shop shop)
+    {
+        return shopService.updateShop(shop);
+    }
+
+
+    /**
+     * 根据商铺类型分页查询商铺信息
+     *
+     * @param typeId  商铺类型
+     * @param current 页码
+     * @param x       坐标轴x
+     * @param y       坐标轴y
+     * @return 商铺列表
+     */
+    @GetMapping("/of/type")
+    public Result queryShopByType(
+            @RequestParam("typeId") Integer typeId,
+            @RequestParam(value = "current", defaultValue = "1") Integer current,
+            @RequestParam(value = "x", required = false) Double x,
+            @RequestParam(value = "y", required = false) Double y
+    )
+    {
+        return shopService.queryShopByType(typeId, current, x, y);
+    }
+
+    /**
+     * 根据商铺名称关键字分页查询商铺信息
+     *
+     * @param name    商铺名称关键字
+     * @param current 页码
+     * @return 商铺列表
+     */
+    @GetMapping("/of/name")
+    public Result queryShopByName(
+            @RequestParam(value = "name", required = false) String name,
+            @RequestParam(value = "current", defaultValue = "1") Integer current
+    )
+    {
+        // 根据类型分页查询
+        Page<Shop> page = shopService.query()
+                .like(StrUtil.isNotBlank(name), "name", name)
+                .page(new Page<>(current, SystemConstants.MAX_PAGE_SIZE));
+        // 返回数据
+        return Result.ok(page.getRecords());
+    }
+}
+
+```
+
+
+
+接口：
+
+```java
+package mao.spring_boot_redis_hmdp.service;
+
+import com.baomidou.mybatisplus.extension.service.IService;
+import mao.spring_boot_redis_hmdp.dto.Result;
+import mao.spring_boot_redis_hmdp.entity.Shop;
+
+
+public interface IShopService extends IService<Shop>
+{
+    /**
+     * 根据id查询商户信息，有缓存
+     *
+     * @param id 商户的id
+     * @return Result
+     */
+    Result queryShopById(Long id);
+
+    /**
+     * 更新商户信息，包含更新缓存
+     *
+     * @param shop 商户信息
+     * @return Result
+     */
+    Result updateShop(Shop shop);
+
+    /**
+     * 根据商铺类型分页查询商铺信息
+     *
+     * @param typeId  商铺类型
+     * @param current 页码
+     * @param x       坐标轴x
+     * @param y       坐标轴y
+     * @return 商铺列表
+     */
+    Result queryShopByType(Integer typeId, Integer current, Double x, Double y);
+}
+
+```
+
+
+
+实现类：
+
+```java
+package mao.spring_boot_redis_hmdp.service.impl;
+
+
+import cn.hutool.core.util.BooleanUtil;
+import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import mao.spring_boot_redis_hmdp.dto.RedisData;
+import mao.spring_boot_redis_hmdp.dto.Result;
+import mao.spring_boot_redis_hmdp.entity.Shop;
+import mao.spring_boot_redis_hmdp.mapper.ShopMapper;
+import mao.spring_boot_redis_hmdp.service.IShopService;
+import mao.spring_boot_redis_hmdp.utils.RedisConstants;
+import mao.spring_boot_redis_hmdp.utils.RedisUtils;
+import mao.spring_boot_redis_hmdp.utils.SystemConstants;
+import org.springframework.data.geo.*;
+import org.springframework.data.redis.connection.RedisGeoCommands;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.stereotype.Service;
+
+import javax.annotation.Resource;
+import java.time.LocalDateTime;
+import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
+@Service
+public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IShopService
+{
+
+    @Resource
+    StringRedisTemplate stringRedisTemplate;
+
+    @Resource
+    private RedisUtils redisUtils;
+
+
+    @Override
+    public Result queryShopById(Long id)
+    {
+        //查询
+        //Shop shop = this.queryWithMutex(id);
+        //Shop shop = this.queryWithLogicalExpire(id);
+        Shop shop = redisUtils.query(RedisConstants.CACHE_SHOP_KEY, RedisConstants.LOCK_SHOP_KEY, id, Shop.class, this::getById,
+                RedisConstants.CACHE_SHOP_TTL, TimeUnit.MINUTES, 300);
+        //判断
+        if (shop == null)
+        {
+            //不存在
+            return Result.fail("店铺信息不存在");
+        }
+        //返回
+        return Result.ok(shop);
+    }
+
+    /**
+     * 互斥锁解决缓存击穿问题
+     *
+     * @param id 商铺id
+     * @return Shop
+     */
+    private Shop queryWithMutex(Long id)
+    {
+        //获取redisKey
+        String redisKey = RedisConstants.CACHE_SHOP_KEY + id;
+        //从redis中查询商户信息，根据id
+        String shopJson = stringRedisTemplate.opsForValue().get(redisKey);
+        //判断取出的数据是否为空
+        if (StrUtil.isNotBlank(shopJson))
+        {
+            //不是空，redis里有，返回
+            return JSONUtil.toBean(shopJson, Shop.class);
+        }
+        //是空串，不是null，返回
+        if (shopJson != null)
+        {
+            return null;
+        }
+        //锁的key
+        String lockKey = RedisConstants.LOCK_SHOP_KEY + id;
+
+        Shop shop = null;
+        try
+        {
+            //获取互斥锁
+            boolean lock = tryLock(lockKey);
+            //判断锁是否获取成功
+            if (!lock)
+            {
+                //没有获取到锁
+                //200毫秒后再次获取
+                Thread.sleep(200);
+                //递归调用
+                return queryWithMutex(id);
+            }
+            //得到了锁
+            //null，查数据库
+            shop = this.getById(id);
+            //判断数据库里的信息是否为空
+            if (shop == null)
+            {
+                //空，将空值写入redis，返回错误
+                stringRedisTemplate.opsForValue().set(redisKey, "", RedisConstants.CACHE_NULL_TTL, TimeUnit.MINUTES);
+                return null;
+            }
+            //存在，回写到redis里，设置随机的过期时间
+            stringRedisTemplate.opsForValue().set(redisKey, JSONUtil.toJsonStr(shop),
+                    RedisConstants.CACHE_SHOP_TTL * 60 + getIntRandom(0, 300), TimeUnit.SECONDS);
+        }
+        catch (InterruptedException e)
+        {
+            throw new RuntimeException(e);
+        }
+        finally
+        {
+            //释放锁
+            //System.out.println("释放锁");
+            this.unlock(lockKey);
+        }
+        //返回数据
+        return shop;
+    }
+
+    //线程池
+    private static final ExecutorService CACHE_REBUILD_EXECUTOR = Executors.newFixedThreadPool(10);
+
+    /**
+     * 使用逻辑过期解决缓存击穿问题
+     *
+     * @param id 商铺id
+     * @return Shop
+     */
+    private Shop queryWithLogicalExpire(Long id)
+    {
+        //获取redisKey
+        String redisKey = RedisConstants.CACHE_SHOP_KEY + id;
+        //从redis中查询商户信息，根据id
+        String shopJson = stringRedisTemplate.opsForValue().get(redisKey);
+        //判断取出的数据是否为空
+        if (StrUtil.isBlank(shopJson))
+        {
+            //是空，redis里没有，返回
+            return null;
+        }
+
+        //json转类
+        RedisData redisData = JSONUtil.toBean(shopJson, RedisData.class);
+        //获取过期时间
+        LocalDateTime expireTime = redisData.getExpireTime();
+        //获取商铺信息
+        Shop shop = JSONUtil.toBean((JSONObject) redisData.getData(), Shop.class);
+        //判断是否过期
+        if (expireTime.isAfter(LocalDateTime.now()))
+        {
+            //没有过期，返回
+            return shop;
+        }
+        //已经过期，缓存重建
+        //获取互斥锁
+        String lockKey = RedisConstants.LOCK_SHOP_KEY + id;
+        boolean isLock = tryLock(lockKey);
+        if (isLock)
+        {
+            //获取锁成功
+            // 开辟独立线程
+            CACHE_REBUILD_EXECUTOR.submit(new Runnable()
+            {
+                @Override
+                public void run()
+                {
+                    try
+                    {
+                        saveShop2Redis(id, 20L);
+                    }
+                    catch (InterruptedException e)
+                    {
+                        throw new RuntimeException(e);
+                    }
+                    finally
+                    {
+                        //释放锁
+                        unlock(lockKey);
+                    }
+                }
+            });
+        }
+        //没有获取到锁，使用旧数据返回
+        return shop;
+
+    }
+
+    /**
+     * 保存商铺信息到redis
+     *
+     * @param id            商铺的id
+     * @param expireSeconds 过期的时间，单位是秒
+     * @throws InterruptedException 异常
+     */
+    public void saveShop2Redis(Long id, Long expireSeconds) throws InterruptedException
+    {
+        // 查询数据库
+        Shop shop = getById(id);
+        // 封装缓存过期时间
+        RedisData redisData = new RedisData();
+        redisData.setData(shop);
+        redisData.setExpireTime(LocalDateTime.now().plusSeconds(expireSeconds));
+        //保存到redis
+        stringRedisTemplate.opsForValue().set(RedisConstants.CACHE_SHOP_KEY, JSONUtil.toJsonStr(redisData));
+    }
+
+
+    @Override
+    public Result updateShop(Shop shop)
+    {
+        //获得id
+        Long id = shop.getId();
+        //判断是否为空
+        if (id == null)
+        {
+            return Result.fail("商户id不能为空");
+        }
+        //不为空
+        //先更新数据库
+        boolean b = this.updateById(shop);
+        //更新失败，返回
+        if (!b)
+        {
+            return Result.fail("更新失败");
+        }
+        //更新没有失败
+        //删除redis里的数据，下一次查询时自动添加进redis
+        //redisKey
+        String redisKey = RedisConstants.CACHE_SHOP_KEY + id;
+        stringRedisTemplate.delete(redisKey);
+        //返回响应
+        return Result.ok();
+    }
+
+    @Override
+    public Result queryShopByType(Integer typeId, Integer current, Double x, Double y)
+    {
+        //判断是否传递了坐标轴信息，如果没有传递，基本分页
+        if (x == null || y == null)
+        {
+            // 根据类型分页查询
+            Page<Shop> page = this.query()
+                    .eq("type_id", typeId)
+                    .page(new Page<>(current, SystemConstants.DEFAULT_PAGE_SIZE));
+            // 返回数据
+            return Result.ok(page.getRecords());
+        }
+        //传递了坐标信息
+        int from = (current - 1) * SystemConstants.DEFAULT_PAGE_SIZE;
+        int end = current * SystemConstants.DEFAULT_PAGE_SIZE;
+        //按距离排序且分页 GeoSearchCommandArgs.newGeoSearchArgs().includeDistance().limit(end))
+        GeoResults<RedisGeoCommands.GeoLocation<String>> geoResults = stringRedisTemplate.
+                opsForGeo().geoRadius(RedisConstants.SHOP_GEO_KEY + typeId,
+                        new Circle(new Point(x, y), 5000),
+                        RedisGeoCommands.GeoRadiusCommandArgs.newGeoRadiusArgs().includeDistance().limit(end));
+        //判断是否为空
+        if (geoResults == null)
+        {
+            //返回空集合
+            return Result.ok(Collections.emptyList());
+        }
+        //不为空
+        //获取内容
+        List<GeoResult<RedisGeoCommands.GeoLocation<String>>> content = geoResults.getContent();
+        //判断是否到底
+        if (from >= content.size())
+        {
+            return Result.ok(Collections.emptyList());
+        }
+        List<Long> ids = new ArrayList<>(content.size());
+        Map<String, Distance> distanceMap = new HashMap<>(content.size());
+        //截取from到end的部分
+        content.stream().skip(from).forEach(result ->
+        {
+            //获取店铺的id
+            String id = result.getContent().getName();
+            //加入到集合中
+            ids.add(Long.valueOf(id));
+            //获得距离信息
+            Distance distance = result.getDistance();
+            //加入到map集合里
+            distanceMap.put(id, distance);
+            //System.out.println(id+"-----"+distance.getValue());
+        });
+        //拼接
+        String join = StrUtil.join(",", ids);
+        //查询数据库
+        List<Shop> shops = this.query().in("id", ids).last("order by field(id," + join + ")").list();
+        //填充距离信息
+        for (Shop shop : shops)
+        {
+            shop.setDistance(distanceMap.get(shop.getId().toString()).getValue());
+        }
+        //返回
+        return Result.ok(shops);
+    }
+
+    /**
+     * 获取一个随机数，区间包含min和max
+     *
+     * @param min 最小值
+     * @param max 最大值
+     * @return int 型的随机数
+     */
+    @SuppressWarnings("all")
+    private int getIntRandom(int min, int max)
+    {
+        if (min > max)
+        {
+            min = max;
+        }
+        return min + (int) (Math.random() * (max - min + 1));
+    }
+
+    /**
+     * 获取锁
+     *
+     * @param key redisKey
+     * @return 获取锁成功，返回true，否则返回false
+     */
+    private boolean tryLock(String key)
+    {
+        Boolean result = stringRedisTemplate.opsForValue().setIfAbsent(key, "1",
+                RedisConstants.LOCK_SHOP_TTL, TimeUnit.SECONDS);
+        return BooleanUtil.isTrue(result);
+    }
+
+    /**
+     * 释放锁
+     *
+     * @param key redisKey
+     */
+    private void unlock(String key)
+    {
+        stringRedisTemplate.delete(key);
+    }
+
+}
+
+```
+
+
+
+
+
+# 用户签到
+
+按月来统计用户签到信息，签到记录为 1，未签到则记录 0
+
+把每一个bit位对应当月的每一天，形成了映射关系。用0和1标示业务状态，这种思路就称为位图
+
+Redis中是利用string类型数据结构实现BitMap，因此最大上限是512M，转换为bit则是 2^32个bit位
+
+
+
+## BitMap用法
+
+* SETBIT：向指定位置（offset）存入一个 0 或 1
+* GETBIT：获取指定位置（offset）的 bit 值
+* BITCOUNT：统计 BitMap 中值为 1 的 bit 位的数量
+* BITFIELD：操作（查询、修改、自增）BitMap 中的 bit 数组中的指定位置（offset）的值。
+* BITFIELD_RO：获取 BitMap 中的 bit 数组，并以十进制形式返回
+* BITOP：将多个 BitMap 的结果做位运算（与、或、异或）
+* BITPOS：查找 bit 数组中指定范围内第一个 0 或 1 出现的位置
+
+
+
+```sh
+127.0.0.1:6379> setbit bit 0 1
+(integer) 0
+127.0.0.1:6379> setbit bit 1 1
+(integer) 0
+127.0.0.1:6379> setbit bit 2 1
+(integer) 0
+127.0.0.1:6379> setbit bit 5 1
+(integer) 0
+127.0.0.1:6379> getbit bit 0
+(integer) 1
+127.0.0.1:6379> getbit bit 1
+(integer) 1
+127.0.0.1:6379> getbit bit 2
+(integer) 1
+127.0.0.1:6379> getbit bit 3
+(integer) 0
+127.0.0.1:6379> getbit bit 4
+(integer) 0
+127.0.0.1:6379> getbit bit 5
+(integer) 1
+127.0.0.1:6379> getbit bit 6
+(integer) 0
+127.0.0.1:6379> BITFIELD bit get u1 0
+1) (integer) 1
+127.0.0.1:6379> BITFIELD bit get u2 0
+1) (integer) 3
+127.0.0.1:6379> BITFIELD bit get u5 0
+1) (integer) 28
+127.0.0.1:6379> BITCOUNT bit 0 5
+(integer) 4
+```
+
+
+
+## 实现签到
+
+UserController:
+
+```java
+package mao.spring_boot_redis_hmdp.controller;
+
+
+import cn.hutool.core.bean.BeanUtil;
+import lombok.extern.slf4j.Slf4j;
+import mao.spring_boot_redis_hmdp.dto.LoginFormDTO;
+import mao.spring_boot_redis_hmdp.dto.Result;
+import mao.spring_boot_redis_hmdp.dto.UserDTO;
+import mao.spring_boot_redis_hmdp.entity.User;
+import mao.spring_boot_redis_hmdp.entity.UserInfo;
+import mao.spring_boot_redis_hmdp.service.IUserInfoService;
+import mao.spring_boot_redis_hmdp.service.IUserService;
+import mao.spring_boot_redis_hmdp.utils.UserHolder;
+import org.springframework.web.bind.annotation.*;
+
+import javax.annotation.Resource;
+import javax.servlet.http.HttpSession;
+
+
+@Slf4j
+@RestController
+@RequestMapping("/user")
+public class UserController
+{
+
+    @Resource
+    private IUserService userService;
+
+    @Resource
+    private IUserInfoService userInfoService;
+
+    /**
+     * 发送手机验证码
+     */
+    @PostMapping("code")
+    public Result sendCode(@RequestParam("phone") String phone, HttpSession session)
+    {
+        return userService.sendCode(phone, session);
+    }
+
+    /**
+     * 登录功能
+     *
+     * @param loginForm 登录参数，包含手机号、验证码；或者手机号、密码
+     */
+    @PostMapping("/login")
+    public Result login(@RequestBody LoginFormDTO loginForm, HttpSession session)
+    {
+        return userService.login(loginForm, session);
+    }
+
+    /**
+     * 登出功能
+     *
+     * @return 无
+     */
+    @PostMapping("/logout")
+    public Result logout()
+    {
+        // TODO 实现登出功能
+        return Result.fail("功能未完成");
+    }
+
+    @GetMapping("/me")
+    public Result me()
+    {
+        return Result.ok(UserHolder.getUser());
+    }
+
+    @GetMapping("/info/{id}")
+    public Result info(@PathVariable("id") Long userId)
+    {
+        // 查询详情
+        UserInfo info = userInfoService.getById(userId);
+        if (info == null)
+        {
+            // 没有详情，应该是第一次查看详情
+            return Result.ok();
+        }
+        info.setCreateTime(null);
+        info.setUpdateTime(null);
+        // 返回
+        return Result.ok(info);
+    }
+
+    /**
+     * 根据查询用户信息
+     *
+     * @param userId 用户的id
+     * @return Result
+     */
+    @GetMapping("/{id}")
+    public Result queryUserById(@PathVariable("id") Long userId)
+    {
+        //查询用户信息
+        User user = userService.getById(userId);
+        if (user == null)
+        {
+            return Result.ok();
+        }
+        //转换
+        UserDTO userDTO = BeanUtil.copyProperties(user, UserDTO.class);
+        return Result.ok(userDTO);
+    }
+
+    /**
+     * 实现用户签到功能
+     *
+     * @return Result
+     */
+    @PostMapping("/sign")
+    public Result sign()
+    {
+        return userService.sign();
+    }
+}
+
+```
+
+
+
+接口：
+
+```java
+package mao.spring_boot_redis_hmdp.service;
+
+import com.baomidou.mybatisplus.extension.service.IService;
+import mao.spring_boot_redis_hmdp.dto.LoginFormDTO;
+import mao.spring_boot_redis_hmdp.dto.Result;
+import mao.spring_boot_redis_hmdp.entity.User;
+
+import javax.servlet.http.HttpSession;
+
+
+public interface IUserService extends IService<User>
+{
+    /**
+     * 发送短信验证码
+     *
+     * @param phone   手机号码
+     * @param session HttpSession
+     * @return Result
+     */
+    Result sendCode(String phone, HttpSession session);
+
+    /**
+     * 登录
+     *
+     * @param loginForm 登录信息，包含手机号和验证码（密码），一个实体类
+     * @param session   HttpSession
+     * @return Result
+     */
+    Result login(LoginFormDTO loginForm, HttpSession session);
+
+    /**
+     * 实现用户签到功能
+     *
+     * @return Result
+     */
+    Result sign();
+}
+
+```
+
+
+
+实现类：
+
+```java
+package mao.spring_boot_redis_hmdp.service.impl;
+
+import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.bean.copier.CopyOptions;
+import cn.hutool.core.lang.UUID;
+import cn.hutool.core.util.RandomUtil;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import mao.spring_boot_redis_hmdp.dto.LoginFormDTO;
+import mao.spring_boot_redis_hmdp.dto.Result;
+import mao.spring_boot_redis_hmdp.dto.UserDTO;
+import mao.spring_boot_redis_hmdp.entity.User;
+import mao.spring_boot_redis_hmdp.mapper.UserMapper;
+import mao.spring_boot_redis_hmdp.service.IUserService;
+import mao.spring_boot_redis_hmdp.utils.RedisConstants;
+import mao.spring_boot_redis_hmdp.utils.RegexUtils;
+import mao.spring_boot_redis_hmdp.utils.SystemConstants;
+import mao.spring_boot_redis_hmdp.utils.UserHolder;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.stereotype.Service;
+
+import javax.annotation.Resource;
+import javax.servlet.http.HttpSession;
+import java.time.LocalDateTime;
+import java.time.Month;
+import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+
+
+@Service
+public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IUserService
+{
+
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
+
+    @Override
+    public Result sendCode(String phone, HttpSession session)
+    {
+        //验证手机号
+        if (RegexUtils.isPhoneInvalid(phone))
+        {
+            //验证不通过，返回错误提示
+            log.debug("验证码错误.....");
+            return Result.fail("手机号错误，请重新填写");
+        }
+        //验证通过，生成验证码
+        //6位数
+        String code = RandomUtil.randomNumbers(6);
+        //保存验证码到redis
+        stringRedisTemplate.opsForValue().set(RedisConstants.LOGIN_CODE_KEY + phone,
+                code, RedisConstants.LOGIN_CODE_TTL, TimeUnit.MINUTES);
+        //发送验证码
+        log.debug("验证码发送成功," + code);
+        //返回响应
+        return Result.ok();
+    }
+
+    @Override
+    public Result login(LoginFormDTO loginForm, HttpSession session)
+    {
+        //判断手机号格式是否正确
+        String phone = loginForm.getPhone();
+        if (RegexUtils.isPhoneInvalid(phone))
+        {
+            //如果不正确则直接返回错误
+            log.debug("手机号:" + phone + "错误");
+            return Result.fail("手机号格式错误");
+        }
+        //判断验证码是否一致，redis中对比
+        //String cacheCode = session.getAttribute("code").toString();
+        String cacheCode = stringRedisTemplate.opsForValue().get(RedisConstants.LOGIN_CODE_KEY + phone);
+        String code = loginForm.getCode();
+        //如果验证码为空，或者不一致，则返回验证码错误
+        if (code == null || code.length() == 0)
+        {
+            return Result.fail("验证码不能为空");
+        }
+        //判断验证码是否为6位数
+        if (code.length() != 6)
+        {
+            return Result.fail("验证码长度不正确");
+        }
+        //判断验证码是否正确
+        if (!code.equals(cacheCode))
+        {
+            //验证码错误
+            return Result.fail("验证码错误");
+        }
+        //验证码输入正确
+        //判断用户是否存在
+        User user = query().eq("phone", phone).one();
+        //如果用户不存在则创建用户，保存到数据库
+        if (user == null)
+        {
+            //创建用户，保存到数据库
+            user = createUser(phone);
+        }
+        //如果用户存在，保存到redis
+        //session.setAttribute("user", user);
+        //生成token，作为登录令牌
+        String token = UUID.randomUUID().toString(true);
+        //将User对象转为Hash存储. UserDTO是用户的部分信息
+        UserDTO userDTO = BeanUtil.copyProperties(user, UserDTO.class);
+        //转map
+        Map<String, Object> userMap = BeanUtil.beanToMap(userDTO, new HashMap<>(), CopyOptions.create()
+                .setIgnoreNullValue(true) // 忽略空的值
+                .setFieldValueEditor((fieldName, fieldVaule) -> fieldVaule.toString()));
+
+        //保存到redis中
+        //保存的key
+        String tokenKey = RedisConstants.LOGIN_USER_KEY + token;
+        //保存
+        stringRedisTemplate.opsForHash().putAll(tokenKey, userMap);
+        //设置有效期
+        stringRedisTemplate.expire(tokenKey, RedisConstants.LOGIN_USER_TTL, TimeUnit.MINUTES);
+        //返回响应，返回token
+        return Result.ok(token);
+    }
+
+    /**
+     * 创建用户，添加到数据库中
+     *
+     * @param phone 手机号码
+     * @return user
+     */
+    private User createUser(String phone)
+    {
+        User user = new User();
+        user.setPhone(phone);
+        user.setNickName(SystemConstants.USER_NICK_NAME_PREFIX + RandomUtil.randomString(10));
+        //将用户信息插入到 t_user表中
+        this.save(user);
+        //返回数据
+        return user;
+    }
+
+    @Override
+    public Result sign()
+    {
+        //获得当前登录的用户
+        UserDTO user = UserHolder.getUser();
+        //获得用户的id
+        Long userId = user.getId();
+        //获得当前的日期
+        LocalDateTime now = LocalDateTime.now();
+        //格式化，：年月
+        String keySuffix = now.format(DateTimeFormatter.ofPattern(":yyyyMM"));
+        //redis key
+        String redisKey = RedisConstants.USER_SIGN_KEY + userId + keySuffix;
+        //获得今天是本月的第几天
+        int dayOfMonth = now.getDayOfMonth();
+        //写入到redis
+        stringRedisTemplate.opsForValue().setBit(redisKey, dayOfMonth - 1, true);
+        //返回
+        return Result.ok();
+    }
+}
+
+```
+
+
+
+
+
+## 签到统计
+
+* 什么叫做连续签到天数？
+
+  从最后一次签到开始向前统计，直到遇到第一次未签到为止，计算总的签到次数，就是连续签到天数
+
+* 如何得到本月到今天为止的所有签到数据？
+
+​	命令：BITFIELD key GET u[dayOfMonth] 0
+
+* 如何从后向前遍历每个bit位？
+
+​	与 1 做与运算，就能得到最后一个bit位。 随后右移1位，下一个bit位就成为了最后一个bit位。
+
+
+
+## 实现签到统计
+
+UserController:
+
+```java
+package mao.spring_boot_redis_hmdp.controller;
+
+
+import cn.hutool.core.bean.BeanUtil;
+import lombok.extern.slf4j.Slf4j;
+import mao.spring_boot_redis_hmdp.dto.LoginFormDTO;
+import mao.spring_boot_redis_hmdp.dto.Result;
+import mao.spring_boot_redis_hmdp.dto.UserDTO;
+import mao.spring_boot_redis_hmdp.entity.User;
+import mao.spring_boot_redis_hmdp.entity.UserInfo;
+import mao.spring_boot_redis_hmdp.service.IUserInfoService;
+import mao.spring_boot_redis_hmdp.service.IUserService;
+import mao.spring_boot_redis_hmdp.utils.UserHolder;
+import org.springframework.web.bind.annotation.*;
+
+import javax.annotation.Resource;
+import javax.servlet.http.HttpSession;
+
+
+@Slf4j
+@RestController
+@RequestMapping("/user")
+public class UserController
+{
+
+    @Resource
+    private IUserService userService;
+
+    @Resource
+    private IUserInfoService userInfoService;
+
+    /**
+     * 发送手机验证码
+     */
+    @PostMapping("code")
+    public Result sendCode(@RequestParam("phone") String phone, HttpSession session)
+    {
+        return userService.sendCode(phone, session);
+    }
+
+    /**
+     * 登录功能
+     *
+     * @param loginForm 登录参数，包含手机号、验证码；或者手机号、密码
+     */
+    @PostMapping("/login")
+    public Result login(@RequestBody LoginFormDTO loginForm, HttpSession session)
+    {
+        return userService.login(loginForm, session);
+    }
+
+    /**
+     * 登出功能
+     *
+     * @return 无
+     */
+    @PostMapping("/logout")
+    public Result logout()
+    {
+        // TODO 实现登出功能
+        return Result.fail("功能未完成");
+    }
+
+    @GetMapping("/me")
+    public Result me()
+    {
+        return Result.ok(UserHolder.getUser());
+    }
+
+    @GetMapping("/info/{id}")
+    public Result info(@PathVariable("id") Long userId)
+    {
+        // 查询详情
+        UserInfo info = userInfoService.getById(userId);
+        if (info == null)
+        {
+            // 没有详情，应该是第一次查看详情
+            return Result.ok();
+        }
+        info.setCreateTime(null);
+        info.setUpdateTime(null);
+        // 返回
+        return Result.ok(info);
+    }
+
+    /**
+     * 根据查询用户信息
+     *
+     * @param userId 用户的id
+     * @return Result
+     */
+    @GetMapping("/{id}")
+    public Result queryUserById(@PathVariable("id") Long userId)
+    {
+        //查询用户信息
+        User user = userService.getById(userId);
+        if (user == null)
+        {
+            return Result.ok();
+        }
+        //转换
+        UserDTO userDTO = BeanUtil.copyProperties(user, UserDTO.class);
+        return Result.ok(userDTO);
+    }
+
+    /**
+     * 实现用户签到功能
+     *
+     * @return Result
+     */
+    @PostMapping("/sign")
+    public Result sign()
+    {
+        return userService.sign();
+    }
+
+    /**
+     * 实现签到统计功能
+     * 连续签到次数：从最后一次签到开始向前统计，直到遇到第一次未签到为止，计算总的签到次数
+     *
+     * @return Result
+     */
+    @GetMapping("/signCount")
+    public Result signCount()
+    {
+        return userService.signCount();
+    }
+}
+
+
+```
+
+
+
+接口：
+
+```java
+package mao.spring_boot_redis_hmdp.service;
+
+import com.baomidou.mybatisplus.extension.service.IService;
+import mao.spring_boot_redis_hmdp.dto.LoginFormDTO;
+import mao.spring_boot_redis_hmdp.dto.Result;
+import mao.spring_boot_redis_hmdp.entity.User;
+
+import javax.servlet.http.HttpSession;
+
+
+public interface IUserService extends IService<User>
+{
+    /**
+     * 发送短信验证码
+     *
+     * @param phone   手机号码
+     * @param session HttpSession
+     * @return Result
+     */
+    Result sendCode(String phone, HttpSession session);
+
+    /**
+     * 登录
+     *
+     * @param loginForm 登录信息，包含手机号和验证码（密码），一个实体类
+     * @param session   HttpSession
+     * @return Result
+     */
+    Result login(LoginFormDTO loginForm, HttpSession session);
+
+    /**
+     * 实现用户签到功能
+     *
+     * @return Result
+     */
+    Result sign();
+
+    /**
+     * 实现签到统计功能
+     * 连续签到次数：从最后一次签到开始向前统计，直到遇到第一次未签到为止，计算总的签到次数
+     *
+     * @return Result
+     */
+    Result signCount();
+}
+
+```
+
+
+
+实现类：
+
+```java
+package mao.spring_boot_redis_hmdp.service.impl;
+
+import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.bean.copier.CopyOptions;
+import cn.hutool.core.lang.UUID;
+import cn.hutool.core.util.RandomUtil;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import mao.spring_boot_redis_hmdp.dto.LoginFormDTO;
+import mao.spring_boot_redis_hmdp.dto.Result;
+import mao.spring_boot_redis_hmdp.dto.UserDTO;
+import mao.spring_boot_redis_hmdp.entity.User;
+import mao.spring_boot_redis_hmdp.mapper.UserMapper;
+import mao.spring_boot_redis_hmdp.service.IUserService;
+import mao.spring_boot_redis_hmdp.utils.RedisConstants;
+import mao.spring_boot_redis_hmdp.utils.RegexUtils;
+import mao.spring_boot_redis_hmdp.utils.SystemConstants;
+import mao.spring_boot_redis_hmdp.utils.UserHolder;
+import org.springframework.data.redis.connection.BitFieldSubCommands;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.stereotype.Service;
+
+import javax.annotation.Resource;
+import javax.servlet.http.HttpSession;
+import java.time.LocalDateTime;
+import java.time.Month;
+import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+
+
+@Service
+public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IUserService
+{
+
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
+
+    @Override
+    public Result sendCode(String phone, HttpSession session)
+    {
+        //验证手机号
+        if (RegexUtils.isPhoneInvalid(phone))
+        {
+            //验证不通过，返回错误提示
+            log.debug("验证码错误.....");
+            return Result.fail("手机号错误，请重新填写");
+        }
+        //验证通过，生成验证码
+        //6位数
+        String code = RandomUtil.randomNumbers(6);
+        //保存验证码到redis
+        stringRedisTemplate.opsForValue().set(RedisConstants.LOGIN_CODE_KEY + phone,
+                code, RedisConstants.LOGIN_CODE_TTL, TimeUnit.MINUTES);
+        //发送验证码
+        log.debug("验证码发送成功," + code);
+        //返回响应
+        return Result.ok();
+    }
+
+    @Override
+    public Result login(LoginFormDTO loginForm, HttpSession session)
+    {
+        //判断手机号格式是否正确
+        String phone = loginForm.getPhone();
+        if (RegexUtils.isPhoneInvalid(phone))
+        {
+            //如果不正确则直接返回错误
+            log.debug("手机号:" + phone + "错误");
+            return Result.fail("手机号格式错误");
+        }
+        //判断验证码是否一致，redis中对比
+        //String cacheCode = session.getAttribute("code").toString();
+        String cacheCode = stringRedisTemplate.opsForValue().get(RedisConstants.LOGIN_CODE_KEY + phone);
+        String code = loginForm.getCode();
+        //如果验证码为空，或者不一致，则返回验证码错误
+        if (code == null || code.length() == 0)
+        {
+            return Result.fail("验证码不能为空");
+        }
+        //判断验证码是否为6位数
+        if (code.length() != 6)
+        {
+            return Result.fail("验证码长度不正确");
+        }
+        //判断验证码是否正确
+        if (!code.equals(cacheCode))
+        {
+            //验证码错误
+            return Result.fail("验证码错误");
+        }
+        //验证码输入正确
+        //判断用户是否存在
+        User user = query().eq("phone", phone).one();
+        //如果用户不存在则创建用户，保存到数据库
+        if (user == null)
+        {
+            //创建用户，保存到数据库
+            user = createUser(phone);
+        }
+        //如果用户存在，保存到redis
+        //session.setAttribute("user", user);
+        //生成token，作为登录令牌
+        String token = UUID.randomUUID().toString(true);
+        //将User对象转为Hash存储. UserDTO是用户的部分信息
+        UserDTO userDTO = BeanUtil.copyProperties(user, UserDTO.class);
+        //转map
+        Map<String, Object> userMap = BeanUtil.beanToMap(userDTO, new HashMap<>(), CopyOptions.create()
+                .setIgnoreNullValue(true) // 忽略空的值
+                .setFieldValueEditor((fieldName, fieldVaule) -> fieldVaule.toString()));
+
+        //保存到redis中
+        //保存的key
+        String tokenKey = RedisConstants.LOGIN_USER_KEY + token;
+        //保存
+        stringRedisTemplate.opsForHash().putAll(tokenKey, userMap);
+        //设置有效期
+        stringRedisTemplate.expire(tokenKey, RedisConstants.LOGIN_USER_TTL, TimeUnit.MINUTES);
+        //返回响应，返回token
+        return Result.ok(token);
+    }
+
+    /**
+     * 创建用户，添加到数据库中
+     *
+     * @param phone 手机号码
+     * @return user
+     */
+    private User createUser(String phone)
+    {
+        User user = new User();
+        user.setPhone(phone);
+        user.setNickName(SystemConstants.USER_NICK_NAME_PREFIX + RandomUtil.randomString(10));
+        //将用户信息插入到 t_user表中
+        this.save(user);
+        //返回数据
+        return user;
+    }
+
+    @Override
+    public Result sign()
+    {
+        //获得当前登录的用户
+        UserDTO user = UserHolder.getUser();
+        //获得用户的id
+        Long userId = user.getId();
+        //获得当前的日期
+        LocalDateTime now = LocalDateTime.now();
+        //格式化，：年月
+        String keySuffix = now.format(DateTimeFormatter.ofPattern(":yyyyMM"));
+        //redis key
+        String redisKey = RedisConstants.USER_SIGN_KEY + userId + keySuffix;
+        //获得今天是本月的第几天
+        int dayOfMonth = now.getDayOfMonth();
+        //写入到redis
+        stringRedisTemplate.opsForValue().setBit(redisKey, dayOfMonth - 1, true);
+        //返回
+        return Result.ok();
+    }
+
+    @Override
+    public Result signCount()
+    {
+        //获得当前登录的用户
+        UserDTO user = UserHolder.getUser();
+        //获得用户的id
+        Long userId = user.getId();
+        //获得当前的日期
+        LocalDateTime now = LocalDateTime.now();
+        //格式化，：年月
+        String keySuffix = now.format(DateTimeFormatter.ofPattern(":yyyyMM"));
+        //redis key
+        String redisKey = RedisConstants.USER_SIGN_KEY + userId + keySuffix;
+        //获得今天是本月的第几天，日期：从 1 到 31
+        int dayOfMonth = now.getDayOfMonth();
+        //从redis里取签到结果
+        List<Long> list = stringRedisTemplate.opsForValue()
+                .bitField(redisKey,
+                        BitFieldSubCommands.create()
+                                .get(BitFieldSubCommands
+                                        .BitFieldType
+                                        .unsigned(dayOfMonth)).valueAt(0));
+        //判断是否为空
+        if (list == null || list.size() == 0)
+        {
+            //没有，返回0
+            return Result.ok(0);
+        }
+        //取第一个，因为一个月最多有31天，小于32位，所以只有一个
+        Long num = list.get(0);
+        //判断第一个是否为空
+        if (num == null || num == 0)
+        {
+            //第一个为0，返回直接0
+            return Result.ok(0);
+        }
+        //计数器
+        int count = 0;
+        //循环遍历数据
+        while (true)
+        {
+            //无符号，和1做与运算
+            long result = num & 1;
+            //判断是否为未签到
+            if (result == 0)
+            {
+                //为签到，跳出循环
+                break;
+            }
+            //不是0
+            //计数器+1
+            count++;
+            //右移一位，左边会补0，所以不用担心会死循环
+            num = num >> 1;
+        }
+        //返回
+        return Result.ok(count);
+    }
+}
+
+```
+
+
+
+
+
+# UV统计
+
+## HyperLogLog用法
+
+* UV：全称Unique Visitor，也叫独立访客量，是指通过互联网访问、浏览这个网页的自然人。1天内同一个用户多次 访问该网站，只记录1次。
+* PV：全称Page View，也叫页面访问量或点击量，用户每访问网站的一个页面，记录1次PV，用户多次打开页面，则 记录多次PV。往往用来衡量网站的流量。
+
+
+
+Hyperloglog(HLL)是从Loglog算法派生的概率算法，用于确定非常大的集合的基数，而不需要存储其所有值。
+
+Redis中的HLL是基于string结构实现的，单个HLL的内存永远小于16kb，内存占用低的令人发指！作为代价，其测量结 果是概率性的，有小于0.81％的误差。不过对于UV统计来说，这完全可以忽略
+
+### 作用
+
+做海量数据的统计工作
+
+### 优点
+
+* 内存占用极低
+* 性能非常好
+
+### 缺点
+
+* 有一定的误差
+
+
+
+```sh
+127.0.0.1:6379> help pfadd
+
+  PFADD key element [element ...]
+  summary: Adds the specified elements to the specified HyperLogLog.
+  since: 2.8.9
+  group: hyperloglog
+
+127.0.0.1:6379> help PFCOUNT
+
+  PFCOUNT key [key ...]
+  summary: Return the approximated cardinality of the set(s) observed by the HyperLogLog at key(s).
+  since: 2.8.9
+  group: hyperloglog
+  
+127.0.0.1:6379> help PFMERGE
+
+  PFMERGE destkey sourcekey [sourcekey ...]
+  summary: Merge N different HyperLogLogs into a single one.
+  since: 2.8.9
+  group: hyperloglog
+```
+
+
+
+## 实现
+
+```java
+	/**
+     * 测试redis的uv统计功能
+     */
+    @Test
+    void UV_statistics()
+    {
+        //发送单位,当前为1000条发一次，如果每次都发送会大大增加网络io
+        int length = 1000;
+        //发送的总数，当前为一百万条数据
+        int total = 1000000;
+        int j = 0;
+        String[] values = new String[length];
+        for (int i = 0; i < total; i++)
+        {
+            j = i % length;
+            //赋值
+            values[j] = "user_" + i;
+            if (j == length - 1)
+            {
+                //发送到redis
+                stringRedisTemplate.opsForHyperLogLog().add("UV", values);
+            }
+        }
+        //发送完成，获得数据
+        Long size = stringRedisTemplate.opsForHyperLogLog().size("UV");
+        log.info("统计结果：" + size);
+        //统计结果：997593
+        //统计结果：1998502(两百万)
+    }
+```
 
