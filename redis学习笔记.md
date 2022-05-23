@@ -2204,3 +2204,1723 @@ Cookie: Idea-2347e683=7bef4e77-fa42-4f63-b13f-9d49fe35fcf9; mbox=session#a01c13f
 
 ### 1. 准备
 
+三个master节点
+
+* 端口号：7201，文件夹：./master1/
+* 端口号：7202，文件夹：./master2/
+* 端口号：7203，文件夹：./master3/
+
+六个slave节点
+
+* 端口号：7301，文件夹：./slave1/
+* 端口号：7302，文件夹：./slave2/
+* 端口号：7303，文件夹：./slave3/
+* 端口号：7304，文件夹：./slave4/
+* 端口号：7305，文件夹：./slave5/
+* 端口号：7306，文件夹：./slave6/
+
+一个master节点对应两个slave节点
+
+
+
+### 2. 创建对应的文件夹
+
+master1~master3，slave1~slave6
+
+
+
+### 3. 在文件夹下创建redis.conf文件
+
+master1：
+
+```sh
+port 7201
+# 开启集群功能
+cluster-enabled yes
+# 集群的配置文件名称，不需要我们创建，由redis自己维护
+# cluster-config-file ./master1/nodes.conf
+# 节点心跳失败的超时时间
+cluster-node-timeout 5000
+# 持久化文件存放目录
+dir ./master1
+# 绑定地址
+bind 127.0.0.1
+# 让redis后台运行
+daemonize no
+# 注册的实例ip
+replica-announce-ip 127.0.0.1
+# 保护模式
+protected-mode no
+# 数据库数量
+databases 1
+# 日志
+# logfile ./master1/run.log
+
+
+
+tcp-backlog 511
+timeout 0
+tcp-keepalive 300
+loglevel notice
+always-show-logo yes
+save 900 1
+save 300 10
+save 60 10000
+stop-writes-on-bgsave-error yes
+rdbcompression yes
+rdbchecksum yes
+dbfilename "dump.rdb"
+replica-serve-stale-data yes
+replica-read-only yes
+repl-diskless-sync no
+repl-diskless-sync-delay 5
+repl-disable-tcp-nodelay no
+replica-priority 100
+lazyfree-lazy-eviction no
+lazyfree-lazy-expire no
+lazyfree-lazy-server-del no
+replica-lazy-flush no
+appendonly no
+appendfilename "appendonly.aof"
+appendfsync everysec
+no-appendfsync-on-rewrite no
+auto-aof-rewrite-percentage 100
+auto-aof-rewrite-min-size 64mb
+aof-load-truncated yes
+aof-use-rdb-preamble yes
+lua-time-limit 5000
+slowlog-max-len 128
+latency-monitor-threshold 0
+notify-keyspace-events ""
+list-max-ziplist-size -2
+list-compress-depth 0
+set-max-intset-entries 512
+zset-max-ziplist-entries 128
+zset-max-ziplist-value 64
+hll-sparse-max-bytes 3000
+stream-node-max-bytes 4096
+stream-node-max-entries 100
+activerehashing yes
+hz 10
+dynamic-hz yes
+rdb-save-incremental-fsync yes
+```
+
+
+
+master2：
+
+```sh
+port 7202
+# 开启集群功能
+cluster-enabled yes
+# 集群的配置文件名称，不需要我们创建，由redis自己维护
+# cluster-config-file ./master2/nodes.conf
+# 节点心跳失败的超时时间
+cluster-node-timeout 5000
+# 持久化文件存放目录
+dir ./master2
+# 绑定地址
+bind 127.0.0.1
+# 让redis后台运行
+daemonize no
+# 注册的实例ip
+replica-announce-ip 127.0.0.1
+# 保护模式
+protected-mode no
+# 数据库数量
+databases 1
+# 日志
+# logfile ./master2/run.log
+
+
+
+tcp-backlog 511
+timeout 0
+tcp-keepalive 300
+loglevel notice
+always-show-logo yes
+save 900 1
+save 300 10
+save 60 10000
+stop-writes-on-bgsave-error yes
+rdbcompression yes
+rdbchecksum yes
+dbfilename "dump.rdb"
+replica-serve-stale-data yes
+replica-read-only yes
+repl-diskless-sync no
+repl-diskless-sync-delay 5
+repl-disable-tcp-nodelay no
+replica-priority 100
+lazyfree-lazy-eviction no
+lazyfree-lazy-expire no
+lazyfree-lazy-server-del no
+replica-lazy-flush no
+appendonly no
+appendfilename "appendonly.aof"
+appendfsync everysec
+no-appendfsync-on-rewrite no
+auto-aof-rewrite-percentage 100
+auto-aof-rewrite-min-size 64mb
+aof-load-truncated yes
+aof-use-rdb-preamble yes
+lua-time-limit 5000
+slowlog-max-len 128
+latency-monitor-threshold 0
+notify-keyspace-events ""
+list-max-ziplist-size -2
+list-compress-depth 0
+set-max-intset-entries 512
+zset-max-ziplist-entries 128
+zset-max-ziplist-value 64
+hll-sparse-max-bytes 3000
+stream-node-max-bytes 4096
+stream-node-max-entries 100
+activerehashing yes
+hz 10
+dynamic-hz yes
+rdb-save-incremental-fsync yes
+```
+
+
+
+master3：
+
+```sh
+port 7203
+# 开启集群功能
+cluster-enabled yes
+# 集群的配置文件名称，不需要我们创建，由redis自己维护
+# cluster-config-file ./master3/nodes.conf
+# 节点心跳失败的超时时间
+cluster-node-timeout 5000
+# 持久化文件存放目录
+dir ./master3
+# 绑定地址
+bind 127.0.0.1
+# 让redis后台运行
+daemonize no
+# 注册的实例ip
+replica-announce-ip 127.0.0.1
+# 保护模式
+protected-mode no
+# 数据库数量
+databases 1
+# 日志
+# logfile ./master3/run.log
+
+
+
+tcp-backlog 511
+timeout 0
+tcp-keepalive 300
+loglevel notice
+always-show-logo yes
+save 900 1
+save 300 10
+save 60 10000
+stop-writes-on-bgsave-error yes
+rdbcompression yes
+rdbchecksum yes
+dbfilename "dump.rdb"
+replica-serve-stale-data yes
+replica-read-only yes
+repl-diskless-sync no
+repl-diskless-sync-delay 5
+repl-disable-tcp-nodelay no
+replica-priority 100
+lazyfree-lazy-eviction no
+lazyfree-lazy-expire no
+lazyfree-lazy-server-del no
+replica-lazy-flush no
+appendonly no
+appendfilename "appendonly.aof"
+appendfsync everysec
+no-appendfsync-on-rewrite no
+auto-aof-rewrite-percentage 100
+auto-aof-rewrite-min-size 64mb
+aof-load-truncated yes
+aof-use-rdb-preamble yes
+lua-time-limit 5000
+slowlog-max-len 128
+latency-monitor-threshold 0
+notify-keyspace-events ""
+list-max-ziplist-size -2
+list-compress-depth 0
+set-max-intset-entries 512
+zset-max-ziplist-entries 128
+zset-max-ziplist-value 64
+hll-sparse-max-bytes 3000
+stream-node-max-bytes 4096
+stream-node-max-entries 100
+activerehashing yes
+hz 10
+dynamic-hz yes
+rdb-save-incremental-fsync yes
+```
+
+
+
+slave1：
+
+```sh
+port 7301
+# 开启集群功能
+cluster-enabled yes
+# 集群的配置文件名称，不需要我们创建，由redis自己维护
+# cluster-config-file ./slave1/nodes.conf
+# 节点心跳失败的超时时间
+cluster-node-timeout 5000
+# 持久化文件存放目录
+dir ./slave1
+# 绑定地址
+bind 127.0.0.1
+# 让redis后台运行
+daemonize no
+# 注册的实例ip
+replica-announce-ip 127.0.0.1
+# 保护模式
+protected-mode no
+# 数据库数量
+databases 1
+# 日志
+# logfile ./slave1/run.log
+
+
+
+tcp-backlog 511
+timeout 0
+tcp-keepalive 300
+loglevel notice
+always-show-logo yes
+save 900 1
+save 300 10
+save 60 10000
+stop-writes-on-bgsave-error yes
+rdbcompression yes
+rdbchecksum yes
+dbfilename "dump.rdb"
+replica-serve-stale-data yes
+replica-read-only yes
+repl-diskless-sync no
+repl-diskless-sync-delay 5
+repl-disable-tcp-nodelay no
+replica-priority 100
+lazyfree-lazy-eviction no
+lazyfree-lazy-expire no
+lazyfree-lazy-server-del no
+replica-lazy-flush no
+appendonly no
+appendfilename "appendonly.aof"
+appendfsync everysec
+no-appendfsync-on-rewrite no
+auto-aof-rewrite-percentage 100
+auto-aof-rewrite-min-size 64mb
+aof-load-truncated yes
+aof-use-rdb-preamble yes
+lua-time-limit 5000
+slowlog-max-len 128
+latency-monitor-threshold 0
+notify-keyspace-events ""
+list-max-ziplist-size -2
+list-compress-depth 0
+set-max-intset-entries 512
+zset-max-ziplist-entries 128
+zset-max-ziplist-value 64
+hll-sparse-max-bytes 3000
+stream-node-max-bytes 4096
+stream-node-max-entries 100
+activerehashing yes
+hz 10
+dynamic-hz yes
+rdb-save-incremental-fsync yes
+```
+
+
+
+slave2：
+
+```sh
+port 7302
+# 开启集群功能
+cluster-enabled yes
+# 集群的配置文件名称，不需要我们创建，由redis自己维护
+# cluster-config-file ./slave2/nodes.conf
+# 节点心跳失败的超时时间
+cluster-node-timeout 5000
+# 持久化文件存放目录
+dir ./slave2
+# 绑定地址
+bind 127.0.0.1
+# 让redis后台运行
+daemonize no
+# 注册的实例ip
+replica-announce-ip 127.0.0.1
+# 保护模式
+protected-mode no
+# 数据库数量
+databases 1
+# 日志
+# logfile ./slave2/run.log
+
+
+
+tcp-backlog 511
+timeout 0
+tcp-keepalive 300
+loglevel notice
+always-show-logo yes
+save 900 1
+save 300 10
+save 60 10000
+stop-writes-on-bgsave-error yes
+rdbcompression yes
+rdbchecksum yes
+dbfilename "dump.rdb"
+replica-serve-stale-data yes
+replica-read-only yes
+repl-diskless-sync no
+repl-diskless-sync-delay 5
+repl-disable-tcp-nodelay no
+replica-priority 100
+lazyfree-lazy-eviction no
+lazyfree-lazy-expire no
+lazyfree-lazy-server-del no
+replica-lazy-flush no
+appendonly no
+appendfilename "appendonly.aof"
+appendfsync everysec
+no-appendfsync-on-rewrite no
+auto-aof-rewrite-percentage 100
+auto-aof-rewrite-min-size 64mb
+aof-load-truncated yes
+aof-use-rdb-preamble yes
+lua-time-limit 5000
+slowlog-max-len 128
+latency-monitor-threshold 0
+notify-keyspace-events ""
+list-max-ziplist-size -2
+list-compress-depth 0
+set-max-intset-entries 512
+zset-max-ziplist-entries 128
+zset-max-ziplist-value 64
+hll-sparse-max-bytes 3000
+stream-node-max-bytes 4096
+stream-node-max-entries 100
+activerehashing yes
+hz 10
+dynamic-hz yes
+rdb-save-incremental-fsync yes
+```
+
+
+
+slave3：
+
+```sh
+port 7303
+# 开启集群功能
+cluster-enabled yes
+# 集群的配置文件名称，不需要我们创建，由redis自己维护
+# cluster-config-file ./slave3/nodes.conf
+# 节点心跳失败的超时时间
+cluster-node-timeout 5000
+# 持久化文件存放目录
+dir ./slave3
+# 绑定地址
+bind 127.0.0.1
+# 让redis后台运行
+daemonize no
+# 注册的实例ip
+replica-announce-ip 127.0.0.1
+# 保护模式
+protected-mode no
+# 数据库数量
+databases 1
+# 日志
+# logfile ./slave3/run.log
+
+
+
+tcp-backlog 511
+timeout 0
+tcp-keepalive 300
+loglevel notice
+always-show-logo yes
+save 900 1
+save 300 10
+save 60 10000
+stop-writes-on-bgsave-error yes
+rdbcompression yes
+rdbchecksum yes
+dbfilename "dump.rdb"
+replica-serve-stale-data yes
+replica-read-only yes
+repl-diskless-sync no
+repl-diskless-sync-delay 5
+repl-disable-tcp-nodelay no
+replica-priority 100
+lazyfree-lazy-eviction no
+lazyfree-lazy-expire no
+lazyfree-lazy-server-del no
+replica-lazy-flush no
+appendonly no
+appendfilename "appendonly.aof"
+appendfsync everysec
+no-appendfsync-on-rewrite no
+auto-aof-rewrite-percentage 100
+auto-aof-rewrite-min-size 64mb
+aof-load-truncated yes
+aof-use-rdb-preamble yes
+lua-time-limit 5000
+slowlog-max-len 128
+latency-monitor-threshold 0
+notify-keyspace-events ""
+list-max-ziplist-size -2
+list-compress-depth 0
+set-max-intset-entries 512
+zset-max-ziplist-entries 128
+zset-max-ziplist-value 64
+hll-sparse-max-bytes 3000
+stream-node-max-bytes 4096
+stream-node-max-entries 100
+activerehashing yes
+hz 10
+dynamic-hz yes
+rdb-save-incremental-fsync yes
+```
+
+
+
+slave4：
+
+```sh
+port 7304
+# 开启集群功能
+cluster-enabled yes
+# 集群的配置文件名称，不需要我们创建，由redis自己维护
+# cluster-config-file ./slave4/nodes.conf
+# 节点心跳失败的超时时间
+cluster-node-timeout 5000
+# 持久化文件存放目录
+dir ./slave4
+# 绑定地址
+bind 127.0.0.1
+# 让redis后台运行
+daemonize no
+# 注册的实例ip
+replica-announce-ip 127.0.0.1
+# 保护模式
+protected-mode no
+# 数据库数量
+databases 1
+# 日志
+# logfile ./slave4/run.log
+
+
+
+tcp-backlog 511
+timeout 0
+tcp-keepalive 300
+loglevel notice
+always-show-logo yes
+save 900 1
+save 300 10
+save 60 10000
+stop-writes-on-bgsave-error yes
+rdbcompression yes
+rdbchecksum yes
+dbfilename "dump.rdb"
+replica-serve-stale-data yes
+replica-read-only yes
+repl-diskless-sync no
+repl-diskless-sync-delay 5
+repl-disable-tcp-nodelay no
+replica-priority 100
+lazyfree-lazy-eviction no
+lazyfree-lazy-expire no
+lazyfree-lazy-server-del no
+replica-lazy-flush no
+appendonly no
+appendfilename "appendonly.aof"
+appendfsync everysec
+no-appendfsync-on-rewrite no
+auto-aof-rewrite-percentage 100
+auto-aof-rewrite-min-size 64mb
+aof-load-truncated yes
+aof-use-rdb-preamble yes
+lua-time-limit 5000
+slowlog-max-len 128
+latency-monitor-threshold 0
+notify-keyspace-events ""
+list-max-ziplist-size -2
+list-compress-depth 0
+set-max-intset-entries 512
+zset-max-ziplist-entries 128
+zset-max-ziplist-value 64
+hll-sparse-max-bytes 3000
+stream-node-max-bytes 4096
+stream-node-max-entries 100
+activerehashing yes
+hz 10
+dynamic-hz yes
+rdb-save-incremental-fsync yes
+```
+
+
+
+slave5：
+
+```sh
+port 7305
+# 开启集群功能
+cluster-enabled yes
+# 集群的配置文件名称，不需要我们创建，由redis自己维护
+# cluster-config-file ./slave5/nodes.conf
+# 节点心跳失败的超时时间
+cluster-node-timeout 5000
+# 持久化文件存放目录
+dir ./slave5
+# 绑定地址
+bind 127.0.0.1
+# 让redis后台运行
+daemonize no
+# 注册的实例ip
+replica-announce-ip 127.0.0.1
+# 保护模式
+protected-mode no
+# 数据库数量
+databases 1
+# 日志
+# logfile ./slave5/run.log
+
+
+
+tcp-backlog 511
+timeout 0
+tcp-keepalive 300
+loglevel notice
+always-show-logo yes
+save 900 1
+save 300 10
+save 60 10000
+stop-writes-on-bgsave-error yes
+rdbcompression yes
+rdbchecksum yes
+dbfilename "dump.rdb"
+replica-serve-stale-data yes
+replica-read-only yes
+repl-diskless-sync no
+repl-diskless-sync-delay 5
+repl-disable-tcp-nodelay no
+replica-priority 100
+lazyfree-lazy-eviction no
+lazyfree-lazy-expire no
+lazyfree-lazy-server-del no
+replica-lazy-flush no
+appendonly no
+appendfilename "appendonly.aof"
+appendfsync everysec
+no-appendfsync-on-rewrite no
+auto-aof-rewrite-percentage 100
+auto-aof-rewrite-min-size 64mb
+aof-load-truncated yes
+aof-use-rdb-preamble yes
+lua-time-limit 5000
+slowlog-max-len 128
+latency-monitor-threshold 0
+notify-keyspace-events ""
+list-max-ziplist-size -2
+list-compress-depth 0
+set-max-intset-entries 512
+zset-max-ziplist-entries 128
+zset-max-ziplist-value 64
+hll-sparse-max-bytes 3000
+stream-node-max-bytes 4096
+stream-node-max-entries 100
+activerehashing yes
+hz 10
+dynamic-hz yes
+rdb-save-incremental-fsync yes
+```
+
+
+
+slave6：
+
+```sh
+port 7306
+# 开启集群功能
+cluster-enabled yes
+# 集群的配置文件名称，不需要我们创建，由redis自己维护
+# cluster-config-file ./slave6/nodes.conf
+# 节点心跳失败的超时时间
+cluster-node-timeout 5000
+# 持久化文件存放目录
+dir ./slave6
+# 绑定地址
+bind 127.0.0.1
+# 让redis后台运行
+daemonize no
+# 注册的实例ip
+replica-announce-ip 127.0.0.1
+# 保护模式
+protected-mode no
+# 数据库数量
+databases 1
+# 日志
+# logfile ./slave6/run.log
+
+
+
+tcp-backlog 511
+timeout 0
+tcp-keepalive 300
+loglevel notice
+always-show-logo yes
+save 900 1
+save 300 10
+save 60 10000
+stop-writes-on-bgsave-error yes
+rdbcompression yes
+rdbchecksum yes
+dbfilename "dump.rdb"
+replica-serve-stale-data yes
+replica-read-only yes
+repl-diskless-sync no
+repl-diskless-sync-delay 5
+repl-disable-tcp-nodelay no
+replica-priority 100
+lazyfree-lazy-eviction no
+lazyfree-lazy-expire no
+lazyfree-lazy-server-del no
+replica-lazy-flush no
+appendonly no
+appendfilename "appendonly.aof"
+appendfsync everysec
+no-appendfsync-on-rewrite no
+auto-aof-rewrite-percentage 100
+auto-aof-rewrite-min-size 64mb
+aof-load-truncated yes
+aof-use-rdb-preamble yes
+lua-time-limit 5000
+slowlog-max-len 128
+latency-monitor-threshold 0
+notify-keyspace-events ""
+list-max-ziplist-size -2
+list-compress-depth 0
+set-max-intset-entries 512
+zset-max-ziplist-entries 128
+zset-max-ziplist-value 64
+hll-sparse-max-bytes 3000
+stream-node-max-bytes 4096
+stream-node-max-entries 100
+activerehashing yes
+hz 10
+dynamic-hz yes
+rdb-save-incremental-fsync yes
+```
+
+
+
+### 4.启动
+
+master1：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe ./master1/redis.conf
+[6216] 23 May 23:09:12.492 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[6216] 23 May 23:09:12.492 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=6216, just started
+[6216] 23 May 23:09:12.492 # Configuration loaded
+[6216] 23 May 23:09:12.496 * Node configuration loaded, I'm 889519edf656439ecabdc67b312c5fb207545a8f
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in cluster mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7201
+ |    `-._   `._    /     _.-'    |     PID: 6216
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[6216] 23 May 23:09:12.497 # Server initialized
+[6216] 23 May 23:09:12.497 * Ready to accept connections
+
+```
+
+
+
+master2：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe ./master2/redis.conf
+[11772] 23 May 23:09:27.705 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[11772] 23 May 23:09:27.705 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=11772, just started
+[11772] 23 May 23:09:27.705 # Configuration loaded
+[11772] 23 May 23:09:27.710 * Node configuration loaded, I'm 1ea04111e6bd9990a8b585b4ec65f184f4bcf0be
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in cluster mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7202
+ |    `-._   `._    /     _.-'    |     PID: 11772
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[11772] 23 May 23:09:27.711 # Server initialized
+[11772] 23 May 23:09:27.712 * Ready to accept connections
+
+```
+
+
+
+master3：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe ./master3/redis.conf
+[14280] 23 May 23:09:47.140 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[14280] 23 May 23:09:47.140 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=14280, just started
+[14280] 23 May 23:09:47.141 # Configuration loaded
+[14280] 23 May 23:09:47.145 * Node configuration loaded, I'm 88f6b06a44c6088e73740373e6325314d8cf1869
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in cluster mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7203
+ |    `-._   `._    /     _.-'    |     PID: 14280
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[14280] 23 May 23:09:47.146 # Server initialized
+[14280] 23 May 23:09:47.146 * Ready to accept connections
+
+```
+
+
+
+slave1：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe ./slave1/redis.conf
+[19580] 23 May 23:10:03.928 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[19580] 23 May 23:10:03.928 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=19580, just started
+[19580] 23 May 23:10:03.928 # Configuration loaded
+[19580] 23 May 23:10:03.932 * Node configuration loaded, I'm 5acf5fc1c21ba468baf93c6f6c8812ff95a97dfb
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in cluster mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7301
+ |    `-._   `._    /     _.-'    |     PID: 19580
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[19580] 23 May 23:10:03.933 # Server initialized
+[19580] 23 May 23:10:03.933 * Ready to accept connections
+
+```
+
+
+
+slave2：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe ./slave2/redis.conf
+[19180] 23 May 23:10:18.049 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[19180] 23 May 23:10:18.049 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=19180, just started
+[19180] 23 May 23:10:18.049 # Configuration loaded
+[19180] 23 May 23:10:18.053 * Node configuration loaded, I'm 4a987744f45c6e8be0d1cd06b220d8527c2b4693
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in cluster mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7302
+ |    `-._   `._    /     _.-'    |     PID: 19180
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[19180] 23 May 23:10:18.054 # Server initialized
+[19180] 23 May 23:10:18.054 * Ready to accept connections
+
+```
+
+
+
+slave3：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe ./slave3/redis.conf
+[14136] 23 May 23:10:33.737 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[14136] 23 May 23:10:33.737 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=14136, just started
+[14136] 23 May 23:10:33.737 # Configuration loaded
+[14136] 23 May 23:10:33.741 * Node configuration loaded, I'm 6dd29f1dc3de2098799ebbe32fcc5207db55cb37
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in cluster mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7303
+ |    `-._   `._    /     _.-'    |     PID: 14136
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[14136] 23 May 23:10:33.742 # Server initialized
+[14136] 23 May 23:10:33.742 * Ready to accept connections
+
+```
+
+
+
+slave4：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe ./slave4/redis.conf
+[17652] 23 May 23:10:47.775 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[17652] 23 May 23:10:47.775 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=17652, just started
+[17652] 23 May 23:10:47.775 # Configuration loaded
+[17652] 23 May 23:10:47.779 * Node configuration loaded, I'm dcd612294dcebd92b78e1e58b66ecf1f622e1e83
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in cluster mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7304
+ |    `-._   `._    /     _.-'    |     PID: 17652
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[17652] 23 May 23:10:47.780 # Server initialized
+[17652] 23 May 23:10:47.780 * Ready to accept connections
+
+```
+
+
+
+slave5：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe ./slave5/redis.conf
+[4968] 23 May 23:11:03.036 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[4968] 23 May 23:11:03.036 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=4968, just started
+[4968] 23 May 23:11:03.036 # Configuration loaded
+[4968] 23 May 23:11:03.043 * Node configuration loaded, I'm ba27caa7bb3c32e55769720e76abe6c3d406b663
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in cluster mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7305
+ |    `-._   `._    /     _.-'    |     PID: 4968
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[4968] 23 May 23:11:03.044 # Server initialized
+[4968] 23 May 23:11:03.044 * Ready to accept connections
+
+```
+
+
+
+slave6：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe ./slave6/redis.conf
+[15680] 23 May 23:11:19.435 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[15680] 23 May 23:11:19.436 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=15680, just started
+[15680] 23 May 23:11:19.436 # Configuration loaded
+[15680] 23 May 23:11:19.443 * Node configuration loaded, I'm c7711cdc85453e23ff734d5a5ef21348a88ae442
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in cluster mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7306
+ |    `-._   `._    /     _.-'    |     PID: 15680
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[15680] 23 May 23:11:19.444 # Server initialized
+[15680] 23 May 23:11:19.444 * Ready to accept connections
+
+```
+
+
+
+### 5. 建立集群关系
+
+控制台输入以下命令：
+
+```sh
+redis-cli --cluster create --cluster-replicas 2 127.0.0.1:7201 127.0.0.1:7202 127.0.0.1:7203 127.0.0.1:7301 127.0.0.1:7302 127.0.0.1:7303 127.0.0.1:7304 127.0.0.1:7305 127.0.0.1:7306
+```
+
+
+
+- `redis-cli --cluster`或者`./redis-trib.rb`：代表集群操作命令
+- `create`：代表是创建集群
+- `--replicas 1`或者`--cluster-replicas 1` ：指定集群中每个master的副本个数为1，此时`节点总数 ÷ (replicas + 1)` 得到的就是master的数量。因此节点列表中的前n个就是master，其它节点都是slave节点，随机分配到不同master
+
+
+
+结果如下：
+
+```sh
+PS C:\Program Files\redis> redis-cli --cluster create --cluster-replicas 2 127.0.0.1:7201 127.0.0.1:7202 127.0.0.1:7203 127.0.0.1:7301 127.0.0.1:7302 127.0.0.1:7303 127.0.0.1:7304 127.0.0.1:7305 127.0.0.1:7306
+>>> Performing hash slots allocation on 9 nodes...
+Master[0] -> Slots 0 - 5460
+Master[1] -> Slots 5461 - 10922
+Master[2] -> Slots 10923 - 16383
+Adding replica 127.0.0.1:7302 to 127.0.0.1:7201
+Adding replica 127.0.0.1:7303 to 127.0.0.1:7201
+Adding replica 127.0.0.1:7304 to 127.0.0.1:7202
+Adding replica 127.0.0.1:7305 to 127.0.0.1:7202
+Adding replica 127.0.0.1:7306 to 127.0.0.1:7203
+Adding replica 127.0.0.1:7301 to 127.0.0.1:7203
+>>> Trying to optimize slaves allocation for anti-affinity
+[WARNING] Some slaves are in the same host as their master
+M: 889519edf656439ecabdc67b312c5fb207545a8f 127.0.0.1:7201
+   slots:[0-5460] (5461 slots) master
+M: 1ea04111e6bd9990a8b585b4ec65f184f4bcf0be 127.0.0.1:7202
+   slots:[5461-10922] (5462 slots) master
+M: 88f6b06a44c6088e73740373e6325314d8cf1869 127.0.0.1:7203
+   slots:[10923-16383] (5461 slots) master
+S: 5acf5fc1c21ba468baf93c6f6c8812ff95a97dfb 127.0.0.1:7301
+   replicates 889519edf656439ecabdc67b312c5fb207545a8f
+S: 4a987744f45c6e8be0d1cd06b220d8527c2b4693 127.0.0.1:7302
+   replicates 889519edf656439ecabdc67b312c5fb207545a8f
+S: 6dd29f1dc3de2098799ebbe32fcc5207db55cb37 127.0.0.1:7303
+   replicates 1ea04111e6bd9990a8b585b4ec65f184f4bcf0be
+S: dcd612294dcebd92b78e1e58b66ecf1f622e1e83 127.0.0.1:7304
+   replicates 88f6b06a44c6088e73740373e6325314d8cf1869
+S: ba27caa7bb3c32e55769720e76abe6c3d406b663 127.0.0.1:7305
+   replicates 88f6b06a44c6088e73740373e6325314d8cf1869
+S: c7711cdc85453e23ff734d5a5ef21348a88ae442 127.0.0.1:7306
+   replicates 1ea04111e6bd9990a8b585b4ec65f184f4bcf0be
+Can I set the above configuration? (type 'yes' to accept):
+```
+
+输入yes后：
+
+```sh
+PS C:\Program Files\redis> redis-cli --cluster create --cluster-replicas 2 127.0.0.1:7201 127.0.0.1:7202 127.0.0.1:7203 127.0.0.1:7301 127.0.0.1:7302 127.0.0.1:7303 127.0.0.1:7304 127.0.0.1:7305 127.0.0.1:7306
+>>> Performing hash slots allocation on 9 nodes...
+Master[0] -> Slots 0 - 5460
+Master[1] -> Slots 5461 - 10922
+Master[2] -> Slots 10923 - 16383
+Adding replica 127.0.0.1:7302 to 127.0.0.1:7201
+Adding replica 127.0.0.1:7303 to 127.0.0.1:7201
+Adding replica 127.0.0.1:7304 to 127.0.0.1:7202
+Adding replica 127.0.0.1:7305 to 127.0.0.1:7202
+Adding replica 127.0.0.1:7306 to 127.0.0.1:7203
+Adding replica 127.0.0.1:7301 to 127.0.0.1:7203
+>>> Trying to optimize slaves allocation for anti-affinity
+[WARNING] Some slaves are in the same host as their master
+M: 889519edf656439ecabdc67b312c5fb207545a8f 127.0.0.1:7201
+   slots:[0-5460] (5461 slots) master
+M: 1ea04111e6bd9990a8b585b4ec65f184f4bcf0be 127.0.0.1:7202
+   slots:[5461-10922] (5462 slots) master
+M: 88f6b06a44c6088e73740373e6325314d8cf1869 127.0.0.1:7203
+   slots:[10923-16383] (5461 slots) master
+S: 5acf5fc1c21ba468baf93c6f6c8812ff95a97dfb 127.0.0.1:7301
+   replicates 889519edf656439ecabdc67b312c5fb207545a8f
+S: 4a987744f45c6e8be0d1cd06b220d8527c2b4693 127.0.0.1:7302
+   replicates 889519edf656439ecabdc67b312c5fb207545a8f
+S: 6dd29f1dc3de2098799ebbe32fcc5207db55cb37 127.0.0.1:7303
+   replicates 1ea04111e6bd9990a8b585b4ec65f184f4bcf0be
+S: dcd612294dcebd92b78e1e58b66ecf1f622e1e83 127.0.0.1:7304
+   replicates 88f6b06a44c6088e73740373e6325314d8cf1869
+S: ba27caa7bb3c32e55769720e76abe6c3d406b663 127.0.0.1:7305
+   replicates 88f6b06a44c6088e73740373e6325314d8cf1869
+S: c7711cdc85453e23ff734d5a5ef21348a88ae442 127.0.0.1:7306
+   replicates 1ea04111e6bd9990a8b585b4ec65f184f4bcf0be
+Can I set the above configuration? (type 'yes' to accept): yes
+>>> Nodes configuration updated
+>>> Assign a different config epoch to each node
+>>> Sending CLUSTER MEET messages to join the cluster
+Waiting for the cluster to join
+.
+>>> Performing Cluster Check (using node 127.0.0.1:7201)
+M: 889519edf656439ecabdc67b312c5fb207545a8f 127.0.0.1:7201
+   slots:[0-5460] (5461 slots) master
+   2 additional replica(s)
+M: 88f6b06a44c6088e73740373e6325314d8cf1869 127.0.0.1:7203
+   slots:[10923-16383] (5461 slots) master
+   2 additional replica(s)
+S: ba27caa7bb3c32e55769720e76abe6c3d406b663 127.0.0.1:7305
+   slots: (0 slots) slave
+   replicates 88f6b06a44c6088e73740373e6325314d8cf1869
+S: 6dd29f1dc3de2098799ebbe32fcc5207db55cb37 127.0.0.1:7303
+   slots: (0 slots) slave
+   replicates 1ea04111e6bd9990a8b585b4ec65f184f4bcf0be
+S: 5acf5fc1c21ba468baf93c6f6c8812ff95a97dfb 127.0.0.1:7301
+   slots: (0 slots) slave
+   replicates 889519edf656439ecabdc67b312c5fb207545a8f
+M: 1ea04111e6bd9990a8b585b4ec65f184f4bcf0be 127.0.0.1:7202
+   slots:[5461-10922] (5462 slots) master
+   2 additional replica(s)
+S: dcd612294dcebd92b78e1e58b66ecf1f622e1e83 127.0.0.1:7304
+   slots: (0 slots) slave
+   replicates 88f6b06a44c6088e73740373e6325314d8cf1869
+S: 4a987744f45c6e8be0d1cd06b220d8527c2b4693 127.0.0.1:7302
+   slots: (0 slots) slave
+   replicates 889519edf656439ecabdc67b312c5fb207545a8f
+S: c7711cdc85453e23ff734d5a5ef21348a88ae442 127.0.0.1:7306
+   slots: (0 slots) slave
+   replicates 1ea04111e6bd9990a8b585b4ec65f184f4bcf0be
+[OK] All nodes agree about slots configuration.
+>>> Check for open slots...
+>>> Check slots coverage...
+[OK] All 16384 slots covered.
+PS C:\Program Files\redis>
+```
+
+
+
+master1：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe ./master1/redis.conf
+[6216] 23 May 23:09:12.492 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[6216] 23 May 23:09:12.492 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=6216, just started
+[6216] 23 May 23:09:12.492 # Configuration loaded
+[6216] 23 May 23:09:12.496 * Node configuration loaded, I'm 889519edf656439ecabdc67b312c5fb207545a8f
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in cluster mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7201
+ |    `-._   `._    /     _.-'    |     PID: 6216
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[6216] 23 May 23:09:12.497 # Server initialized
+[6216] 23 May 23:09:12.497 * Ready to accept connections
+[6216] 23 May 23:16:16.352 # configEpoch set to 1 via CLUSTER SET-CONFIG-EPOCH
+[6216] 23 May 23:16:16.376 # IP address for this node updated to 127.0.0.1
+[6216] 23 May 23:16:21.387 # Cluster state changed: ok
+
+```
+
+
+
+master2：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe ./master2/redis.conf
+[11772] 23 May 23:09:27.705 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[11772] 23 May 23:09:27.705 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=11772, just started
+[11772] 23 May 23:09:27.705 # Configuration loaded
+[11772] 23 May 23:09:27.710 * Node configuration loaded, I'm 1ea04111e6bd9990a8b585b4ec65f184f4bcf0be
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in cluster mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7202
+ |    `-._   `._    /     _.-'    |     PID: 11772
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[11772] 23 May 23:09:27.711 # Server initialized
+[11772] 23 May 23:09:27.712 * Ready to accept connections
+[11772] 23 May 23:16:16.352 # configEpoch set to 2 via CLUSTER SET-CONFIG-EPOCH
+[11772] 23 May 23:16:16.409 # IP address for this node updated to 127.0.0.1
+[11772] 23 May 23:16:21.387 # Cluster state changed: ok
+
+```
+
+
+
+master3：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe ./master3/redis.conf
+[14280] 23 May 23:09:47.140 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[14280] 23 May 23:09:47.140 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=14280, just started
+[14280] 23 May 23:09:47.141 # Configuration loaded
+[14280] 23 May 23:09:47.145 * Node configuration loaded, I'm 88f6b06a44c6088e73740373e6325314d8cf1869
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in cluster mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7203
+ |    `-._   `._    /     _.-'    |     PID: 14280
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[14280] 23 May 23:09:47.146 # Server initialized
+[14280] 23 May 23:09:47.146 * Ready to accept connections
+[14280] 23 May 23:16:16.353 # configEpoch set to 3 via CLUSTER SET-CONFIG-EPOCH
+[14280] 23 May 23:16:16.409 # IP address for this node updated to 127.0.0.1
+[14280] 23 May 23:16:21.371 # Cluster state changed: ok
+
+```
+
+
+
+slave1：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe ./slave1/redis.conf
+[19580] 23 May 23:10:03.928 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[19580] 23 May 23:10:03.928 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=19580, just started
+[19580] 23 May 23:10:03.928 # Configuration loaded
+[19580] 23 May 23:10:03.932 * Node configuration loaded, I'm 5acf5fc1c21ba468baf93c6f6c8812ff95a97dfb
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in cluster mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7301
+ |    `-._   `._    /     _.-'    |     PID: 19580
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[19580] 23 May 23:10:03.933 # Server initialized
+[19580] 23 May 23:10:03.933 * Ready to accept connections
+[19580] 23 May 23:16:16.353 # configEpoch set to 4 via CLUSTER SET-CONFIG-EPOCH
+[19580] 23 May 23:16:16.409 # IP address for this node updated to 127.0.0.1
+[19580] 23 May 23:16:18.382 * Before turning into a replica, using my master parameters to synthesize a cached master: I may be able to synchronize with the new master with just a partial transfer.
+[19580] 23 May 23:16:18.383 # Cluster state changed: ok
+[19580] 23 May 23:16:18.928 * Connecting to MASTER 127.0.0.1:7201
+[19580] 23 May 23:16:18.928 * MASTER <-> REPLICA sync started
+[19580] 23 May 23:16:18.929 * Non blocking connect for SYNC fired the event.
+[19580] 23 May 23:16:18.929 * Master replied to PING, replication can continue...
+[19580] 23 May 23:17:20.107 # Timeout connecting to the MASTER...
+[19580] 23 May 23:17:20.107 * Connecting to MASTER 127.0.0.1:7201
+[19580] 23 May 23:17:20.108 * MASTER <-> REPLICA sync started
+[19580] 23 May 23:17:20.108 * Non blocking connect for SYNC fired the event.
+[19580] 23 May 23:17:20.108 * Master replied to PING, replication can continue...
+[19580] 23 May 23:18:21.370 # Timeout connecting to the MASTER...
+[19580] 23 May 23:18:21.370 * Connecting to MASTER 127.0.0.1:7201
+[19580] 23 May 23:18:21.371 * MASTER <-> REPLICA sync started
+[19580] 23 May 23:18:21.371 * Non blocking connect for SYNC fired the event.
+[19580] 23 May 23:18:21.371 * Master replied to PING, replication can continue...
+[19580] 23 May 23:19:22.599 # Timeout connecting to the MASTER...
+[19580] 23 May 23:19:22.599 * Connecting to MASTER 127.0.0.1:7201
+[19580] 23 May 23:19:22.599 * MASTER <-> REPLICA sync started
+[19580] 23 May 23:19:22.600 * Non blocking connect for SYNC fired the event.
+[19580] 23 May 23:19:22.600 * Master replied to PING, replication can continue...
+
+```
+
+
+
+slave2：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe ./slave2/redis.conf
+[19180] 23 May 23:10:18.049 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[19180] 23 May 23:10:18.049 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=19180, just started
+[19180] 23 May 23:10:18.049 # Configuration loaded
+[19180] 23 May 23:10:18.053 * Node configuration loaded, I'm 4a987744f45c6e8be0d1cd06b220d8527c2b4693
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in cluster mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7302
+ |    `-._   `._    /     _.-'    |     PID: 19180
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[19180] 23 May 23:10:18.054 # Server initialized
+[19180] 23 May 23:10:18.054 * Ready to accept connections
+[19180] 23 May 23:16:16.354 # configEpoch set to 5 via CLUSTER SET-CONFIG-EPOCH
+[19180] 23 May 23:16:16.521 # IP address for this node updated to 127.0.0.1
+[19180] 23 May 23:16:18.385 * Before turning into a replica, using my master parameters to synthesize a cached master: I may be able to synchronize with the new master with just a partial transfer.
+[19180] 23 May 23:16:18.385 # Cluster state changed: ok
+[19180] 23 May 23:16:18.611 * Connecting to MASTER 127.0.0.1:7201
+[19180] 23 May 23:16:18.611 * MASTER <-> REPLICA sync started
+[19180] 23 May 23:16:18.611 * Non blocking connect for SYNC fired the event.
+[19180] 23 May 23:16:18.612 * Master replied to PING, replication can continue...
+[19180] 23 May 23:17:19.788 # Timeout connecting to the MASTER...
+[19180] 23 May 23:17:19.788 * Connecting to MASTER 127.0.0.1:7201
+[19180] 23 May 23:17:19.789 * MASTER <-> REPLICA sync started
+[19180] 23 May 23:17:19.789 * Non blocking connect for SYNC fired the event.
+[19180] 23 May 23:17:19.790 * Master replied to PING, replication can continue...
+[19180] 23 May 23:18:21.051 # Timeout connecting to the MASTER...
+[19180] 23 May 23:18:21.051 * Connecting to MASTER 127.0.0.1:7201
+[19180] 23 May 23:18:21.052 * MASTER <-> REPLICA sync started
+[19180] 23 May 23:18:21.052 * Non blocking connect for SYNC fired the event.
+[19180] 23 May 23:18:21.052 * Master replied to PING, replication can continue...
+[19180] 23 May 23:19:22.281 # Timeout connecting to the MASTER...
+[19180] 23 May 23:19:22.281 * Connecting to MASTER 127.0.0.1:7201
+[19180] 23 May 23:19:22.282 * MASTER <-> REPLICA sync started
+[19180] 23 May 23:19:22.282 * Non blocking connect for SYNC fired the event.
+[19180] 23 May 23:19:22.283 * Master replied to PING, replication can continue...
+
+```
+
+
+
+slave3：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe ./slave3/redis.conf
+[14136] 23 May 23:10:33.737 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[14136] 23 May 23:10:33.737 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=14136, just started
+[14136] 23 May 23:10:33.737 # Configuration loaded
+[14136] 23 May 23:10:33.741 * Node configuration loaded, I'm 6dd29f1dc3de2098799ebbe32fcc5207db55cb37
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in cluster mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7303
+ |    `-._   `._    /     _.-'    |     PID: 14136
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[14136] 23 May 23:10:33.742 # Server initialized
+[14136] 23 May 23:10:33.742 * Ready to accept connections
+[14136] 23 May 23:16:16.354 # configEpoch set to 6 via CLUSTER SET-CONFIG-EPOCH
+[14136] 23 May 23:16:16.521 # IP address for this node updated to 127.0.0.1
+[14136] 23 May 23:16:18.386 * Before turning into a replica, using my master parameters to synthesize a cached master: I may be able to synchronize with the new master with just a partial transfer.
+[14136] 23 May 23:16:18.386 # Cluster state changed: ok
+[14136] 23 May 23:16:18.753 * Connecting to MASTER 127.0.0.1:7202
+[14136] 23 May 23:16:18.753 * MASTER <-> REPLICA sync started
+[14136] 23 May 23:16:18.754 * Non blocking connect for SYNC fired the event.
+[14136] 23 May 23:16:18.754 * Master replied to PING, replication can continue...
+[14136] 23 May 23:17:19.931 # Timeout connecting to the MASTER...
+[14136] 23 May 23:17:19.931 * Connecting to MASTER 127.0.0.1:7202
+[14136] 23 May 23:17:19.931 * MASTER <-> REPLICA sync started
+[14136] 23 May 23:17:19.932 * Non blocking connect for SYNC fired the event.
+[14136] 23 May 23:17:19.933 * Master replied to PING, replication can continue...
+[14136] 23 May 23:18:20.079 # Timeout connecting to the MASTER...
+[14136] 23 May 23:18:20.079 * Connecting to MASTER 127.0.0.1:7202
+[14136] 23 May 23:18:20.080 * MASTER <-> REPLICA sync started
+[14136] 23 May 23:18:20.080 * Non blocking connect for SYNC fired the event.
+[14136] 23 May 23:18:20.080 * Master replied to PING, replication can continue...
+[14136] 23 May 23:19:21.313 # Timeout connecting to the MASTER...
+[14136] 23 May 23:19:21.313 * Connecting to MASTER 127.0.0.1:7202
+[14136] 23 May 23:19:21.314 * MASTER <-> REPLICA sync started
+[14136] 23 May 23:19:21.315 * Non blocking connect for SYNC fired the event.
+[14136] 23 May 23:19:21.315 * Master replied to PING, replication can continue...
+[14136] 23 May 23:20:22.540 # Timeout connecting to the MASTER...
+[14136] 23 May 23:20:22.540 * Connecting to MASTER 127.0.0.1:7202
+[14136] 23 May 23:20:22.541 * MASTER <-> REPLICA sync started
+[14136] 23 May 23:20:22.541 * Non blocking connect for SYNC fired the event.
+[14136] 23 May 23:20:22.541 * Master replied to PING, replication can continue...
+
+```
+
+
+
+slave4：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe ./slave4/redis.conf
+[17652] 23 May 23:10:47.775 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[17652] 23 May 23:10:47.775 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=17652, just started
+[17652] 23 May 23:10:47.775 # Configuration loaded
+[17652] 23 May 23:10:47.779 * Node configuration loaded, I'm dcd612294dcebd92b78e1e58b66ecf1f622e1e83
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in cluster mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7304
+ |    `-._   `._    /     _.-'    |     PID: 17652
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[17652] 23 May 23:10:47.780 # Server initialized
+[17652] 23 May 23:10:47.780 * Ready to accept connections
+[17652] 23 May 23:16:16.355 # configEpoch set to 7 via CLUSTER SET-CONFIG-EPOCH
+[17652] 23 May 23:16:16.521 # IP address for this node updated to 127.0.0.1
+[17652] 23 May 23:16:18.388 * Before turning into a replica, using my master parameters to synthesize a cached master: I may be able to synchronize with the new master with just a partial transfer.
+[17652] 23 May 23:16:18.389 # Cluster state changed: ok
+[17652] 23 May 23:16:19.436 * Connecting to MASTER 127.0.0.1:7203
+[17652] 23 May 23:16:19.436 * MASTER <-> REPLICA sync started
+[17652] 23 May 23:16:19.436 * Non blocking connect for SYNC fired the event.
+[17652] 23 May 23:16:19.437 * Master replied to PING, replication can continue...
+[17652] 23 May 23:17:20.614 # Timeout connecting to the MASTER...
+[17652] 23 May 23:17:20.614 * Connecting to MASTER 127.0.0.1:7203
+[17652] 23 May 23:17:20.614 * MASTER <-> REPLICA sync started
+[17652] 23 May 23:17:20.615 * Non blocking connect for SYNC fired the event.
+[17652] 23 May 23:17:20.615 * Master replied to PING, replication can continue...
+[17652] 23 May 23:18:21.879 # Timeout connecting to the MASTER...
+[17652] 23 May 23:18:21.879 * Connecting to MASTER 127.0.0.1:7203
+[17652] 23 May 23:18:21.879 * MASTER <-> REPLICA sync started
+[17652] 23 May 23:18:21.879 * Non blocking connect for SYNC fired the event.
+[17652] 23 May 23:18:21.879 * Master replied to PING, replication can continue...
+[17652] 23 May 23:19:23.108 # Timeout connecting to the MASTER...
+[17652] 23 May 23:19:23.108 * Connecting to MASTER 127.0.0.1:7203
+[17652] 23 May 23:19:23.108 * MASTER <-> REPLICA sync started
+[17652] 23 May 23:19:23.108 * Non blocking connect for SYNC fired the event.
+[17652] 23 May 23:19:23.108 * Master replied to PING, replication can continue...
+
+```
+
+
+
+slave5：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe ./slave5/redis.conf
+[4968] 23 May 23:11:03.036 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[4968] 23 May 23:11:03.036 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=4968, just started
+[4968] 23 May 23:11:03.036 # Configuration loaded
+[4968] 23 May 23:11:03.043 * Node configuration loaded, I'm ba27caa7bb3c32e55769720e76abe6c3d406b663
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in cluster mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7305
+ |    `-._   `._    /     _.-'    |     PID: 4968
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[4968] 23 May 23:11:03.044 # Server initialized
+[4968] 23 May 23:11:03.044 * Ready to accept connections
+[4968] 23 May 23:16:16.355 # configEpoch set to 8 via CLUSTER SET-CONFIG-EPOCH
+[4968] 23 May 23:16:16.409 # IP address for this node updated to 127.0.0.1
+[4968] 23 May 23:16:18.390 * Before turning into a replica, using my master parameters to synthesize a cached master: I may be able to synchronize with the new master with just a partial transfer.
+[4968] 23 May 23:16:18.390 # Cluster state changed: ok
+[4968] 23 May 23:16:19.150 * Connecting to MASTER 127.0.0.1:7203
+[4968] 23 May 23:16:19.150 * MASTER <-> REPLICA sync started
+[4968] 23 May 23:16:19.151 * Non blocking connect for SYNC fired the event.
+[4968] 23 May 23:16:19.151 * Master replied to PING, replication can continue...
+[4968] 23 May 23:17:20.328 # Timeout connecting to the MASTER...
+[4968] 23 May 23:17:20.328 * Connecting to MASTER 127.0.0.1:7203
+[4968] 23 May 23:17:20.329 * MASTER <-> REPLICA sync started
+[4968] 23 May 23:17:20.329 * Non blocking connect for SYNC fired the event.
+[4968] 23 May 23:17:20.329 * Master replied to PING, replication can continue...
+[4968] 23 May 23:18:21.593 # Timeout connecting to the MASTER...
+[4968] 23 May 23:18:21.593 * Connecting to MASTER 127.0.0.1:7203
+[4968] 23 May 23:18:21.593 * MASTER <-> REPLICA sync started
+[4968] 23 May 23:18:21.593 * Non blocking connect for SYNC fired the event.
+[4968] 23 May 23:18:21.593 * Master replied to PING, replication can continue...
+[4968] 23 May 23:19:22.821 # Timeout connecting to the MASTER...
+[4968] 23 May 23:19:22.821 * Connecting to MASTER 127.0.0.1:7203
+[4968] 23 May 23:19:22.821 * MASTER <-> REPLICA sync started
+[4968] 23 May 23:19:22.821 * Non blocking connect for SYNC fired the event.
+[4968] 23 May 23:19:22.821 * Master replied to PING, replication can continue...
+
+```
+
+
+
+slave6：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe ./slave6/redis.conf
+[15680] 23 May 23:11:19.435 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[15680] 23 May 23:11:19.436 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=15680, just started
+[15680] 23 May 23:11:19.436 # Configuration loaded
+[15680] 23 May 23:11:19.443 * Node configuration loaded, I'm c7711cdc85453e23ff734d5a5ef21348a88ae442
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in cluster mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7306
+ |    `-._   `._    /     _.-'    |     PID: 15680
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[15680] 23 May 23:11:19.444 # Server initialized
+[15680] 23 May 23:11:19.444 * Ready to accept connections
+[15680] 23 May 23:16:16.356 # configEpoch set to 9 via CLUSTER SET-CONFIG-EPOCH
+[15680] 23 May 23:16:16.521 # IP address for this node updated to 127.0.0.1
+[15680] 23 May 23:16:18.393 * Before turning into a replica, using my master parameters to synthesize a cached master: I may be able to synchronize with the new master with just a partial transfer.
+[15680] 23 May 23:16:18.393 # Cluster state changed: ok
+[15680] 23 May 23:16:18.833 * Connecting to MASTER 127.0.0.1:7202
+[15680] 23 May 23:16:18.833 * MASTER <-> REPLICA sync started
+[15680] 23 May 23:16:18.835 * Non blocking connect for SYNC fired the event.
+[15680] 23 May 23:16:18.835 * Master replied to PING, replication can continue...
+[15680] 23 May 23:17:20.011 # Timeout connecting to the MASTER...
+[15680] 23 May 23:17:20.011 * Connecting to MASTER 127.0.0.1:7202
+[15680] 23 May 23:17:20.011 * MASTER <-> REPLICA sync started
+[15680] 23 May 23:17:20.011 * Non blocking connect for SYNC fired the event.
+[15680] 23 May 23:17:20.012 * Master replied to PING, replication can continue...
+[15680] 23 May 23:18:21.275 # Timeout connecting to the MASTER...
+[15680] 23 May 23:18:21.275 * Connecting to MASTER 127.0.0.1:7202
+[15680] 23 May 23:18:21.275 * MASTER <-> REPLICA sync started
+[15680] 23 May 23:18:21.276 * Non blocking connect for SYNC fired the event.
+[15680] 23 May 23:18:21.276 * Master replied to PING, replication can continue...
+[15680] 23 May 23:19:22.503 # Timeout connecting to the MASTER...
+[15680] 23 May 23:19:22.503 * Connecting to MASTER 127.0.0.1:7202
+[15680] 23 May 23:19:22.504 * MASTER <-> REPLICA sync started
+[15680] 23 May 23:19:22.504 * Non blocking connect for SYNC fired the event.
+[15680] 23 May 23:19:22.504 * Master replied to PING, replication can continue...
+[15680] 23 May 23:20:23.730 # Timeout connecting to the MASTER...
+[15680] 23 May 23:20:23.730 * Connecting to MASTER 127.0.0.1:7202
+[15680] 23 May 23:20:23.731 * MASTER <-> REPLICA sync started
+[15680] 23 May 23:20:23.731 * Non blocking connect for SYNC fired the event.
+[15680] 23 May 23:20:23.731 * Master replied to PING, replication can continue...
+
+```
+
+
+
+### 6. 查看集群状态
+
+```sh
+redis-cli -p 7201 cluster nodes
+```
+
+
+
+结果：
+
+```sh
+C:\Users\mao>redis-cli -p 7201 cluster nodes
+88f6b06a44c6088e73740373e6325314d8cf1869 127.0.0.1:7203@17203 master - 0 1653319356000 3 connected 10923-16383
+ba27caa7bb3c32e55769720e76abe6c3d406b663 127.0.0.1:7305@17305 slave 88f6b06a44c6088e73740373e6325314d8cf1869 0 1653319355507 8 connected
+6dd29f1dc3de2098799ebbe32fcc5207db55cb37 127.0.0.1:7303@17303 slave 1ea04111e6bd9990a8b585b4ec65f184f4bcf0be 0 1653319355728 2 connected
+5acf5fc1c21ba468baf93c6f6c8812ff95a97dfb 127.0.0.1:7301@17301 slave 889519edf656439ecabdc67b312c5fb207545a8f 0 1653319355061 4 connected
+1ea04111e6bd9990a8b585b4ec65f184f4bcf0be 127.0.0.1:7202@17202 master - 0 1653319356619 2 connected 5461-10922
+889519edf656439ecabdc67b312c5fb207545a8f 127.0.0.1:7201@17201 myself,master - 0 1653319355000 1 connected 0-5460
+dcd612294dcebd92b78e1e58b66ecf1f622e1e83 127.0.0.1:7304@17304 slave 88f6b06a44c6088e73740373e6325314d8cf1869 0 1653319356399 7 connected
+4a987744f45c6e8be0d1cd06b220d8527c2b4693 127.0.0.1:7302@17302 slave 889519edf656439ecabdc67b312c5fb207545a8f 0 1653319355000 5 connected
+c7711cdc85453e23ff734d5a5ef21348a88ae442 127.0.0.1:7306@17306 slave 1ea04111e6bd9990a8b585b4ec65f184f4bcf0be 0 1653319355000 9 connected
+
+```
+
+
+
+### 7.测试
+
+客户端连接：
+
+```sh
+redis-cli -c -p 7001
+```
+
+注意：多了一个-c参数
+
+结果：
+
+```sh
+PS C:\Program Files\redis> redis-cli -p 7201
+127.0.0.1:7201> ping
+PONG
+127.0.0.1:7201> set q 1
+(error) MOVED 11958 127.0.0.1:7203
+127.0.0.1:7201> exit
+PS C:\Program Files\redis> redis-cli -c -p 7201
+127.0.0.1:7201> ping
+PONG
+127.0.0.1:7201> set q 134
+-> Redirected to slot [11958] located at 127.0.0.1:7203
+OK
+127.0.0.1:7203> get q
+"134"
+127.0.0.1:7203> exit
+PS C:\Program Files\redis> redis-cli -c -p 7202
+127.0.0.1:7202> get q
+-> Redirected to slot [11958] located at 127.0.0.1:7203
+"134"
+127.0.0.1:7203> set q 345
+OK
+127.0.0.1:7203> get q
+"345"
+127.0.0.1:7203> exit
+PS C:\Program Files\redis> redis-cli -c -p 7203
+127.0.0.1:7203> get q
+"345"
+127.0.0.1:7203> set w 1
+-> Redirected to slot [3696] located at 127.0.0.1:7201
+OK
+127.0.0.1:7201> exit
+PS C:\Program Files\redis> redis-cli -c -p 7302
+127.0.0.1:7302> ping
+PONG
+127.0.0.1:7302> get q
+-> Redirected to slot [11958] located at 127.0.0.1:7203
+"345"
+127.0.0.1:7203> get w
+-> Redirected to slot [3696] located at 127.0.0.1:7201
+"1"
+127.0.0.1:7201> get q
+-> Redirected to slot [11958] located at 127.0.0.1:7203
+"345"
+127.0.0.1:7203> set e 34
+OK
+127.0.0.1:7203> exit
+PS C:\Program Files\redis> redis-cli -c -p 7303
+127.0.0.1:7303> set r 45
+-> Redirected to slot [7893] located at 127.0.0.1:7202
+OK
+127.0.0.1:7202>
+```
+
+
+
+## windows分片集群启动脚本
+
+```sh
+```
+
