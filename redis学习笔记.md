@@ -1960,3 +1960,247 @@ start "redis-sentinel-7502" redis-server.exe sentinel2/sentinel.conf --sentinel
 start "redis-sentinel-7503" redis-server.exe sentinel3/sentinel.conf --sentinel
 ```
 
+
+
+
+
+## java代码操作redis哨兵集群
+
+在Sentinel集群监管下的Redis主从集群，其节点会因为自动故障转移而发生变化，Redis的客户端必须感知这种变化，及时更新连接信息。Spring的RedisTemplate底层利用lettuce实现了节点的感知和自动切换。
+
+### 引入依赖
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-redis</artifactId>
+</dependency>
+```
+
+
+
+### 配置
+
+在配置文件application.yml中指定redis的sentinel相关信息
+
+```yaml
+spring:
+  redis:
+    sentinel:
+      master: mymaster
+      nodes:
+        - 127.0.0.1:7501
+        - 127.0.0.1:7502
+        - 127.0.0.1:7503
+```
+
+
+
+### 配置读写分离
+
+```java
+@Configuration
+public class RedisConfig
+{
+
+    @Bean
+    public LettuceClientConfigurationBuilderCustomizer lettuceClientConfigurationBuilderCustomizer()
+    {
+        
+        return clientConfigurationBuilder -> clientConfigurationBuilder.readFrom(ReadFrom.REPLICA_PREFERRED);
+    }
+}
+```
+
+读写策略：
+
+- MASTER：从主节点读取
+- MASTER_PREFERRED：优先从master节点读取，master不可用才读取replica
+- REPLICA：从slave（replica）节点读取
+- REPLICA _PREFERRED：优先从slave（replica）节点读取，所有的slave都不可用才读取master
+
+
+
+### RedisTestController
+
+```java
+@RestController
+public class RedisTestController
+{
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
+
+    @GetMapping("set/{key}/{value}")
+    public Boolean set(@PathVariable String key, @PathVariable String value)
+    {
+        stringRedisTemplate.opsForValue().set(key, value);
+        return true;
+    }
+
+    @GetMapping("get/{key}")
+    public String get(@PathVariable String key)
+    {
+        return stringRedisTemplate.opsForValue().get(key);
+    }
+}
+
+```
+
+
+
+### 结果
+
+向redis里存一个数：
+
+http://localhost:8080/set/a/1267
+
+控制台结果：
+
+```sh
+2022-05-23 13:21:04.135 DEBUG 11808 --- [o-8080-Acceptor] o.apache.tomcat.util.threads.LimitLatch  : Counting up[http-nio-8080-Acceptor] latch=1
+2022-05-23 13:21:04.136 DEBUG 11808 --- [o-8080-Acceptor] o.apache.tomcat.util.threads.LimitLatch  : Counting up[http-nio-8080-Acceptor] latch=2
+2022-05-23 13:21:04.140 DEBUG 11808 --- [nio-8080-exec-4] o.a.coyote.http11.Http11InputBuffer      : Before fill(): parsingHeader: [true], parsingRequestLine: [true], parsingRequestLinePhase: [0], parsingRequestLineStart: [0], byteBuffer.position(): [0], byteBuffer.limit(): [0], end: [938]
+2022-05-23 13:21:04.140 DEBUG 11808 --- [nio-8080-exec-4] o.a.tomcat.util.net.SocketWrapperBase    : Socket: [org.apache.tomcat.util.net.NioEndpoint$NioSocketWrapper@78e2c444:org.apache.tomcat.util.net.NioChannel@3489c5de:java.nio.channels.SocketChannel[connected local=/[0:0:0:0:0:0:0:1]:8080 remote=/[0:0:0:0:0:0:0:1]:60091]], Read from buffer: [0]
+2022-05-23 13:21:04.140 DEBUG 11808 --- [nio-8080-exec-4] org.apache.tomcat.util.net.NioEndpoint   : Socket: [org.apache.tomcat.util.net.NioEndpoint$NioSocketWrapper@78e2c444:org.apache.tomcat.util.net.NioChannel@3489c5de:java.nio.channels.SocketChannel[connected local=/[0:0:0:0:0:0:0:1]:8080 remote=/[0:0:0:0:0:0:0:1]:60091]], Read direct from socket: [917]
+2022-05-23 13:21:04.140 DEBUG 11808 --- [nio-8080-exec-4] o.a.coyote.http11.Http11InputBuffer      : Received [GET /set/a/1267 HTTP/1.1
+Host: localhost:8080
+Connection: keep-alive
+sec-ch-ua: " Not A;Brand";v="99", "Chromium";v="101", "Microsoft Edge";v="101"
+sec-ch-ua-mobile: ?0
+sec-ch-ua-platform: "Windows"
+Upgrade-Insecure-Requests: 1
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.64 Safari/537.36 Edg/101.0.1210.53
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9
+Sec-Fetch-Site: none
+Sec-Fetch-Mode: navigate
+Sec-Fetch-User: ?1
+Sec-Fetch-Dest: document
+Accept-Encoding: gzip, deflate, br
+Accept-Language: zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6
+Cookie: Idea-2347e683=7bef4e77-fa42-4f63-b13f-9d49fe35fcf9; mbox=session#a01c13ff0816407685902a031e6d50bd#1644071823|PC#a01c13ff0816407685902a031e6d50bd.32_0#1678249975; _ga=GA1.1.2061233658.1650939704
+
+]
+2022-05-23 13:21:04.141 DEBUG 11808 --- [nio-8080-exec-4] o.a.t.util.http.Rfc6265CookieProcessor   : Cookies: Parsing b[]: Idea-2347e683=7bef4e77-fa42-4f63-b13f-9d49fe35fcf9; mbox=session#a01c13ff0816407685902a031e6d50bd#1644071823|PC#a01c13ff0816407685902a031e6d50bd.32_0#1678249975; _ga=GA1.1.2061233658.1650939704
+2022-05-23 13:21:04.141 DEBUG 11808 --- [nio-8080-exec-4] o.a.c.authenticator.AuthenticatorBase    : Security checking request GET /set/a/1267
+2022-05-23 13:21:04.141 DEBUG 11808 --- [nio-8080-exec-4] org.apache.catalina.realm.RealmBase      :   No applicable constraints defined
+2022-05-23 13:21:04.141 DEBUG 11808 --- [nio-8080-exec-4] o.a.c.authenticator.AuthenticatorBase    : Not subject to any constraint
+2022-05-23 13:21:04.142 DEBUG 11808 --- [nio-8080-exec-4] org.apache.tomcat.util.http.Parameters   : Set encoding to UTF-8
+2022-05-23 13:21:04.142 DEBUG 11808 --- [nio-8080-exec-4] o.s.web.servlet.DispatcherServlet        : GET "/set/a/1267", parameters={}
+2022-05-23 13:21:04.142 DEBUG 11808 --- [nio-8080-exec-4] s.w.s.m.m.a.RequestMappingHandlerMapping : Mapped to mao.redis_sentinel_cluster.controller.RedisTestController#set(String, String)
+2022-05-23 13:21:04.143 DEBUG 11808 --- [nio-8080-exec-4] o.s.d.redis.core.RedisConnectionUtils    : Fetching Redis Connection from RedisConnectionFactory
+2022-05-23 13:21:04.145 DEBUG 11808 --- [nio-8080-exec-4] io.lettuce.core.RedisChannelHandler      : dispatching command AsyncCommand [type=SET, output=StatusOutput [output=null, error='null'], commandType=io.lettuce.core.protocol.Command]
+2022-05-23 13:21:04.145 DEBUG 11808 --- [nio-8080-exec-4] i.l.c.m.MasterReplicaConnectionProvider  : getConnectionAsync(WRITE)
+2022-05-23 13:21:04.145 DEBUG 11808 --- [nio-8080-exec-4] io.lettuce.core.RedisChannelHandler      : dispatching command AsyncCommand [type=SET, output=StatusOutput [output=null, error='null'], commandType=io.lettuce.core.protocol.Command]
+2022-05-23 13:21:04.145 DEBUG 11808 --- [nio-8080-exec-4] i.lettuce.core.protocol.DefaultEndpoint  : [channel=0x46c53bca, /127.0.0.1:60024 -> /127.0.0.1:7001, epid=0xa] write() writeAndFlush command AsyncCommand [type=SET, output=StatusOutput [output=null, error='null'], commandType=io.lettuce.core.protocol.Command]
+2022-05-23 13:21:04.145 DEBUG 11808 --- [nio-8080-exec-4] i.lettuce.core.protocol.DefaultEndpoint  : [channel=0x46c53bca, /127.0.0.1:60024 -> /127.0.0.1:7001, epid=0xa] write() done
+2022-05-23 13:21:04.145 DEBUG 11808 --- [oEventLoop-4-10] io.lettuce.core.protocol.CommandHandler  : [channel=0x46c53bca, /127.0.0.1:60024 -> /127.0.0.1:7001, epid=0xa, chid=0xa] write(ctx, AsyncCommand [type=SET, output=StatusOutput [output=null, error='null'], commandType=io.lettuce.core.protocol.Command], promise)
+2022-05-23 13:21:04.146 DEBUG 11808 --- [oEventLoop-4-10] io.lettuce.core.protocol.CommandEncoder  : [channel=0x46c53bca, /127.0.0.1:60024 -> /127.0.0.1:7001] writing command AsyncCommand [type=SET, output=StatusOutput [output=null, error='null'], commandType=io.lettuce.core.protocol.Command]
+2022-05-23 13:21:04.146 DEBUG 11808 --- [oEventLoop-4-10] io.lettuce.core.protocol.CommandHandler  : [channel=0x46c53bca, /127.0.0.1:60024 -> /127.0.0.1:7001, epid=0xa, chid=0xa] Received: 5 bytes, 1 commands in the stack
+2022-05-23 13:21:04.146 DEBUG 11808 --- [oEventLoop-4-10] io.lettuce.core.protocol.CommandHandler  : [channel=0x46c53bca, /127.0.0.1:60024 -> /127.0.0.1:7001, epid=0xa, chid=0xa] Stack contains: 1 commands
+2022-05-23 13:21:04.146 DEBUG 11808 --- [oEventLoop-4-10] i.l.core.protocol.RedisStateMachine      : Decode done, empty stack: true
+2022-05-23 13:21:04.146 DEBUG 11808 --- [oEventLoop-4-10] io.lettuce.core.protocol.CommandHandler  : [channel=0x46c53bca, /127.0.0.1:60024 -> /127.0.0.1:7001, epid=0xa, chid=0xa] Completing command AsyncCommand [type=SET, output=StatusOutput [output=OK, error='null'], commandType=io.lettuce.core.protocol.Command]
+2022-05-23 13:21:04.146 DEBUG 11808 --- [nio-8080-exec-4] o.s.d.redis.core.RedisConnectionUtils    : Closing Redis Connection.
+2022-05-23 13:21:04.147 DEBUG 11808 --- [nio-8080-exec-4] m.m.a.RequestResponseBodyMethodProcessor : Using 'application/json;q=0.8', given [text/html, application/xhtml+xml, image/webp, image/apng, application/xml;q=0.9, application/signed-exchange;v=b3;q=0.9, */*;q=0.8] and supported [application/json, application/*+json, application/json, application/*+json]
+2022-05-23 13:21:04.147 DEBUG 11808 --- [nio-8080-exec-4] m.m.a.RequestResponseBodyMethodProcessor : Writing [true]
+2022-05-23 13:21:04.153 DEBUG 11808 --- [nio-8080-exec-4] o.s.web.servlet.DispatcherServlet        : Completed 200 OK
+2022-05-23 13:21:04.153 DEBUG 11808 --- [nio-8080-exec-4] o.a.coyote.http11.Http11InputBuffer      : Before fill(): parsingHeader: [true], parsingRequestLine: [true], parsingRequestLinePhase: [0], parsingRequestLineStart: [0], byteBuffer.position(): [0], byteBuffer.limit(): [0], end: [917]
+2022-05-23 13:21:04.153 DEBUG 11808 --- [nio-8080-exec-4] o.a.tomcat.util.net.SocketWrapperBase    : Socket: [org.apache.tomcat.util.net.NioEndpoint$NioSocketWrapper@78e2c444:org.apache.tomcat.util.net.NioChannel@3489c5de:java.nio.channels.SocketChannel[connected local=/[0:0:0:0:0:0:0:1]:8080 remote=/[0:0:0:0:0:0:0:1]:60091]], Read from buffer: [0]
+2022-05-23 13:21:04.153 DEBUG 11808 --- [nio-8080-exec-4] org.apache.tomcat.util.net.NioEndpoint   : Socket: [org.apache.tomcat.util.net.NioEndpoint$NioSocketWrapper@78e2c444:org.apache.tomcat.util.net.NioChannel@3489c5de:java.nio.channels.SocketChannel[connected local=/[0:0:0:0:0:0:0:1]:8080 remote=/[0:0:0:0:0:0:0:1]:60091]], Read direct from socket: [0]
+2022-05-23 13:21:04.153 DEBUG 11808 --- [nio-8080-exec-4] o.a.coyote.http11.Http11InputBuffer      : Received []
+2022-05-23 13:21:04.154 DEBUG 11808 --- [nio-8080-exec-4] o.apache.coyote.http11.Http11Processor   : Socket: [org.apache.tomcat.util.net.NioEndpoint$NioSocketWrapper@78e2c444:org.apache.tomcat.util.net.NioChannel@3489c5de:java.nio.channels.SocketChannel[connected local=/[0:0:0:0:0:0:0:1]:8080 remote=/[0:0:0:0:0:0:0:1]:60091]], Status in: [OPEN_READ], State out: [OPEN]
+2022-05-23 13:21:04.154 DEBUG 11808 --- [nio-8080-exec-4] org.apache.tomcat.util.net.NioEndpoint   : Registered read interest for [org.apache.tomcat.util.net.NioEndpoint$NioSocketWrapper@78e2c444:org.apache.tomcat.util.net.NioChannel@3489c5de:java.nio.channels.SocketChannel[connected local=/[0:0:0:0:0:0:0:1]:8080 remote=/[0:0:0:0:0:0:0:1]:60091]]
+
+```
+
+
+
+向redis里取一个数：
+
+http://localhost:8080/get/a
+
+结果：
+
+```sh
+2022-05-23 13:22:37.762 DEBUG 11808 --- [o-8080-Acceptor] o.apache.tomcat.util.threads.LimitLatch  : Counting up[http-nio-8080-Acceptor] latch=1
+2022-05-23 13:22:37.763 DEBUG 11808 --- [o-8080-Acceptor] o.apache.tomcat.util.threads.LimitLatch  : Counting up[http-nio-8080-Acceptor] latch=2
+2022-05-23 13:22:37.767 DEBUG 11808 --- [nio-8080-exec-7] o.a.coyote.http11.Http11InputBuffer      : Before fill(): parsingHeader: [true], parsingRequestLine: [true], parsingRequestLinePhase: [0], parsingRequestLineStart: [0], byteBuffer.position(): [0], byteBuffer.limit(): [0], end: [917]
+2022-05-23 13:22:37.767 DEBUG 11808 --- [nio-8080-exec-7] o.a.tomcat.util.net.SocketWrapperBase    : Socket: [org.apache.tomcat.util.net.NioEndpoint$NioSocketWrapper@1d57775f:org.apache.tomcat.util.net.NioChannel@3489c5de:java.nio.channels.SocketChannel[connected local=/[0:0:0:0:0:0:0:1]:8080 remote=/[0:0:0:0:0:0:0:1]:60152]], Read from buffer: [0]
+2022-05-23 13:22:37.767 DEBUG 11808 --- [nio-8080-exec-7] org.apache.tomcat.util.net.NioEndpoint   : Socket: [org.apache.tomcat.util.net.NioEndpoint$NioSocketWrapper@1d57775f:org.apache.tomcat.util.net.NioChannel@3489c5de:java.nio.channels.SocketChannel[connected local=/[0:0:0:0:0:0:0:1]:8080 remote=/[0:0:0:0:0:0:0:1]:60152]], Read direct from socket: [912]
+2022-05-23 13:22:37.767 DEBUG 11808 --- [nio-8080-exec-7] o.a.coyote.http11.Http11InputBuffer      : Received [GET /get/a HTTP/1.1
+Host: localhost:8080
+Connection: keep-alive
+sec-ch-ua: " Not A;Brand";v="99", "Chromium";v="101", "Microsoft Edge";v="101"
+sec-ch-ua-mobile: ?0
+sec-ch-ua-platform: "Windows"
+Upgrade-Insecure-Requests: 1
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.64 Safari/537.36 Edg/101.0.1210.53
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9
+Sec-Fetch-Site: none
+Sec-Fetch-Mode: navigate
+Sec-Fetch-User: ?1
+Sec-Fetch-Dest: document
+Accept-Encoding: gzip, deflate, br
+Accept-Language: zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6
+Cookie: Idea-2347e683=7bef4e77-fa42-4f63-b13f-9d49fe35fcf9; mbox=session#a01c13ff0816407685902a031e6d50bd#1644071823|PC#a01c13ff0816407685902a031e6d50bd.32_0#1678249975; _ga=GA1.1.2061233658.1650939704
+
+]
+2022-05-23 13:22:37.768 DEBUG 11808 --- [nio-8080-exec-7] o.a.t.util.http.Rfc6265CookieProcessor   : Cookies: Parsing b[]: Idea-2347e683=7bef4e77-fa42-4f63-b13f-9d49fe35fcf9; mbox=session#a01c13ff0816407685902a031e6d50bd#1644071823|PC#a01c13ff0816407685902a031e6d50bd.32_0#1678249975; _ga=GA1.1.2061233658.1650939704
+2022-05-23 13:22:37.768 DEBUG 11808 --- [nio-8080-exec-7] o.a.c.authenticator.AuthenticatorBase    : Security checking request GET /get/a
+2022-05-23 13:22:37.768 DEBUG 11808 --- [nio-8080-exec-7] org.apache.catalina.realm.RealmBase      :   No applicable constraints defined
+2022-05-23 13:22:37.768 DEBUG 11808 --- [nio-8080-exec-7] o.a.c.authenticator.AuthenticatorBase    : Not subject to any constraint
+2022-05-23 13:22:37.769 DEBUG 11808 --- [nio-8080-exec-7] org.apache.tomcat.util.http.Parameters   : Set encoding to UTF-8
+2022-05-23 13:22:37.769 DEBUG 11808 --- [nio-8080-exec-7] o.s.web.servlet.DispatcherServlet        : GET "/get/a", parameters={}
+2022-05-23 13:22:37.769 DEBUG 11808 --- [nio-8080-exec-7] s.w.s.m.m.a.RequestMappingHandlerMapping : Mapped to mao.redis_sentinel_cluster.controller.RedisTestController#get(String)
+2022-05-23 13:22:37.770 DEBUG 11808 --- [nio-8080-exec-7] o.s.d.redis.core.RedisConnectionUtils    : Fetching Redis Connection from RedisConnectionFactory
+2022-05-23 13:22:37.770 DEBUG 11808 --- [nio-8080-exec-7] io.lettuce.core.RedisChannelHandler      : dispatching command AsyncCommand [type=GET, output=ValueOutput [output=null, error='null'], commandType=io.lettuce.core.protocol.Command]
+2022-05-23 13:22:37.770 DEBUG 11808 --- [nio-8080-exec-7] i.l.c.m.MasterReplicaConnectionProvider  : getConnectionAsync(READ)
+2022-05-23 13:22:37.770 DEBUG 11808 --- [nio-8080-exec-7] io.lettuce.core.RedisChannelHandler      : dispatching command AsyncCommand [type=GET, output=ValueOutput [output=null, error='null'], commandType=io.lettuce.core.protocol.Command]
+2022-05-23 13:22:37.770 DEBUG 11808 --- [nio-8080-exec-7] i.lettuce.core.protocol.DefaultEndpoint  : [channel=0x9ae76d5f, /127.0.0.1:60022 -> /127.0.0.1:7002, epid=0x8] write() writeAndFlush command AsyncCommand [type=GET, output=ValueOutput [output=null, error='null'], commandType=io.lettuce.core.protocol.Command]
+2022-05-23 13:22:37.771 DEBUG 11808 --- [nio-8080-exec-7] i.lettuce.core.protocol.DefaultEndpoint  : [channel=0x9ae76d5f, /127.0.0.1:60022 -> /127.0.0.1:7002, epid=0x8] write() done
+2022-05-23 13:22:37.771 DEBUG 11808 --- [ioEventLoop-4-8] io.lettuce.core.protocol.CommandHandler  : [channel=0x9ae76d5f, /127.0.0.1:60022 -> /127.0.0.1:7002, epid=0x8, chid=0x8] write(ctx, AsyncCommand [type=GET, output=ValueOutput [output=null, error='null'], commandType=io.lettuce.core.protocol.Command], promise)
+2022-05-23 13:22:37.772 DEBUG 11808 --- [ioEventLoop-4-8] io.lettuce.core.protocol.CommandEncoder  : [channel=0x9ae76d5f, /127.0.0.1:60022 -> /127.0.0.1:7002] writing command AsyncCommand [type=GET, output=ValueOutput [output=null, error='null'], commandType=io.lettuce.core.protocol.Command]
+2022-05-23 13:22:37.772 DEBUG 11808 --- [ioEventLoop-4-8] io.lettuce.core.protocol.CommandHandler  : [channel=0x9ae76d5f, /127.0.0.1:60022 -> /127.0.0.1:7002, epid=0x8, chid=0x8] Received: 10 bytes, 1 commands in the stack
+2022-05-23 13:22:37.772 DEBUG 11808 --- [ioEventLoop-4-8] io.lettuce.core.protocol.CommandHandler  : [channel=0x9ae76d5f, /127.0.0.1:60022 -> /127.0.0.1:7002, epid=0x8, chid=0x8] Stack contains: 1 commands
+2022-05-23 13:22:37.772 DEBUG 11808 --- [ioEventLoop-4-8] i.l.core.protocol.RedisStateMachine      : Decode done, empty stack: true
+2022-05-23 13:22:37.772 DEBUG 11808 --- [ioEventLoop-4-8] io.lettuce.core.protocol.CommandHandler  : [channel=0x9ae76d5f, /127.0.0.1:60022 -> /127.0.0.1:7002, epid=0x8, chid=0x8] Completing command AsyncCommand [type=GET, output=ValueOutput [output=[B@5679d7e, error='null'], commandType=io.lettuce.core.protocol.Command]
+2022-05-23 13:22:37.772 DEBUG 11808 --- [nio-8080-exec-7] o.s.d.redis.core.RedisConnectionUtils    : Closing Redis Connection.
+2022-05-23 13:22:37.773 DEBUG 11808 --- [nio-8080-exec-7] m.m.a.RequestResponseBodyMethodProcessor : Using 'text/html', given [text/html, application/xhtml+xml, image/webp, image/apng, application/xml;q=0.9, application/signed-exchange;v=b3;q=0.9, */*;q=0.8] and supported [text/plain, */*, text/plain, */*, application/json, application/*+json, application/json, application/*+json]
+2022-05-23 13:22:37.773 DEBUG 11808 --- [nio-8080-exec-7] m.m.a.RequestResponseBodyMethodProcessor : Writing ["1267"]
+2022-05-23 13:22:37.774 DEBUG 11808 --- [nio-8080-exec-7] o.s.web.servlet.DispatcherServlet        : Completed 200 OK
+2022-05-23 13:22:37.774 DEBUG 11808 --- [nio-8080-exec-7] o.a.coyote.http11.Http11InputBuffer      : Before fill(): parsingHeader: [true], parsingRequestLine: [true], parsingRequestLinePhase: [0], parsingRequestLineStart: [0], byteBuffer.position(): [0], byteBuffer.limit(): [0], end: [912]
+2022-05-23 13:22:37.774 DEBUG 11808 --- [nio-8080-exec-7] o.a.tomcat.util.net.SocketWrapperBase    : Socket: [org.apache.tomcat.util.net.NioEndpoint$NioSocketWrapper@1d57775f:org.apache.tomcat.util.net.NioChannel@3489c5de:java.nio.channels.SocketChannel[connected local=/[0:0:0:0:0:0:0:1]:8080 remote=/[0:0:0:0:0:0:0:1]:60152]], Read from buffer: [0]
+2022-05-23 13:22:37.774 DEBUG 11808 --- [nio-8080-exec-7] org.apache.tomcat.util.net.NioEndpoint   : Socket: [org.apache.tomcat.util.net.NioEndpoint$NioSocketWrapper@1d57775f:org.apache.tomcat.util.net.NioChannel@3489c5de:java.nio.channels.SocketChannel[connected local=/[0:0:0:0:0:0:0:1]:8080 remote=/[0:0:0:0:0:0:0:1]:60152]], Read direct from socket: [0]
+2022-05-23 13:22:37.774 DEBUG 11808 --- [nio-8080-exec-7] o.a.coyote.http11.Http11InputBuffer      : Received []
+2022-05-23 13:22:37.774 DEBUG 11808 --- [nio-8080-exec-7] o.apache.coyote.http11.Http11Processor   : Socket: [org.apache.tomcat.util.net.NioEndpoint$NioSocketWrapper@1d57775f:org.apache.tomcat.util.net.NioChannel@3489c5de:java.nio.channels.SocketChannel[connected local=/[0:0:0:0:0:0:0:1]:8080 remote=/[0:0:0:0:0:0:0:1]:60152]], Status in: [OPEN_READ], State out: [OPEN]
+2022-05-23 13:22:37.775 DEBUG 11808 --- [nio-8080-exec-7] org.apache.tomcat.util.net.NioEndpoint   : Registered read interest for [org.apache.tomcat.util.net.NioEndpoint$NioSocketWrapper@1d57775f:org.apache.tomcat.util.net.NioChannel@3489c5de:java.nio.channels.SocketChannel[connected local=/[0:0:0:0:0:0:0:1]:8080 remote=/[0:0:0:0:0:0:0:1]:60152]]
+
+```
+
+
+
+
+
+
+
+# redis分片集群
+
+主从和哨兵可以解决高可用、高并发读的问题。但是依然有两个问题没有解决：
+
+- 海量数据存储问题
+- 高并发写的问题
+
+
+
+## 特点
+
+- 集群中有多个master，每个master保存不同数据
+- 每个master都可以有多个slave节点
+- master之间通过ping监测彼此健康状态
+- 客户端请求可以访问集群任意节点，最终都会被转发到正确节点
+
+
+
+## 集群步骤
+
+### 1. 准备
+

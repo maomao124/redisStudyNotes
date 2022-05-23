@@ -217,6 +217,19 @@ slave：从节点
 
 ## 步骤
 
+
+
+一个master节点：
+
+* master：文件夹：./redis1  端口号：7001
+
+两个slave节点：
+
+* slave1：文件夹：./redis2  端口号：7002
+* slave2：文件夹：./redis3  端口号：7003
+
+
+
 ### 1. 修改redis-6.2.4/redis.conf文件，将其中的持久化模式改为默认的RDB模式，AOF保持关闭状态
 
 ```sh
@@ -611,7 +624,8 @@ C:\Program Files\redis>redis-server.exe redis3/redis.conf
 ### 7. 连接 7001节点，查看集群状态
 
 ```sh
-
+Microsoft Windows [版本 10.0.19044.1706]
+(c) Microsoft Corporation。保留所有权利。
 
 C:\Users\mao>redis-cli -p 7002
 127.0.0.1:7002> ping
@@ -733,4 +747,1216 @@ repl_backlog_histlen:490
 ## 主从数据同步原理
 
 ### 全量同步
+
+主从第一次建立连接时，会执行**全量同步**，将master节点的所有数据都拷贝给slave节点
+
+第一阶段：
+
+* slave：执行 replicaof命令， 建立连接
+* slave：请求数据同步
+* master：判断是否是第一次同步
+* master：是第一次，返回master的数据版本信息
+* slave：保存 版本信息
+
+第二阶段：
+
+* master：执行bgsave，生成RDB，并记录 RDB期间的所有命令到repl_baklog
+* master：发送RDB文件
+* slave：清空本地数据，加载RDB文件
+
+第三阶段：
+
+* matser：发送repl_baklog中的命令
+* slave：执行接收到的命令
+
+
+
+- **Replication Id**：简称replid，是数据集的标记，id一致则说明是同一数据集。每一个master都有唯一的replid，slave则会继承master节点的replid
+- **offset**：偏移量，随着记录在repl_baklog中的数据增多而逐渐增大。slave完成同步时也会记录当前同步的offset。如果slave的offset小于master的offset，说明slave数据落后于master，需要更新。
+
+
+
+master如何判断slave是不是第一次来同步数据？
+
+lave做数据同步，必须向master声明自己的replication id 和offset，master才可以判断到底需要同步哪些数据。
+
+因为slave原本也是一个master，有自己的replid和offset，当第一次变成slave，与master建立连接时，发送的replid和offset是自己的replid和offset。
+
+master判断发现slave发送来的replid与自己的不一致，说明这是一个全新的slave，就知道要做全量同步了。
+
+master会将自己的replid和offset都发送给这个slave，slave保存这些信息。以后slave的replid就与master一致了。
+
+因此，**master判断一个节点是否是第一次同步的依据，就是看replid是否一致**。
+
+
+
+完整流程描述：
+
+- slave节点请求增量同步
+- master节点判断replid，发现不一致，拒绝增量同步
+- master将完整内存数据生成RDB，发送RDB到slave
+- slave清空本地数据，加载master的RDB
+- master将RDB期间的命令记录在repl_baklog，并持续将log中的命令发送给slave
+- slave执行接收到的命令，保持与master之间的同步
+
+
+
+###  增量同步
+
+全量同步需要先做RDB，然后将RDB文件通过网络传输个slave，成本太高了。因此除了第一次做全量同步，其它大多数时候slave与master都是做**增量同步**。
+
+什么是增量同步？就是只更新slave与master存在差异的部分数据。主从第一次同步是全量同步，但如果slave重启后同步，则执行增量同步
+
+第一阶段：
+
+* slave：重启
+* slave：psync replid offset
+* master：判断请求replid是否一致
+* master：一致，不是第一次，返回continue
+
+第二阶段：
+
+* master：去repl_baklog 中获取offset后的数据
+* master：发送offset后的命令
+* slave：执行 命令
+
+
+
+
+
+### repl_backlog原理
+
+repl_baklog文件是一个固定大小的数组，只不过数组是环形，也就是说**角标到达数组末尾后，会再次从0开始读写**，这样数组头部的数据就会被覆盖。
+
+repl_baklog中会记录Redis处理过的命令日志及offset，包括master当前的offset，和slave已经拷贝到的offset。
+
+slave与master的offset之间的差异，就是salve需要增量拷贝的数据了。
+
+随着不断有数据写入，master的offset逐渐变大，slave也不断的拷贝，追赶master的offset。
+
+直到数组被填满。
+
+此时，如果有新的数据写入，就会覆盖数组中的旧数据。
+
+但是，如果slave出现网络阻塞，导致master的offset远远超过了slave的offset，如果master继续写入新数据，其offset就会覆盖旧的数据，直到将slave现在的offset也覆盖。此时如果slave恢复，需要同步，却发现自己的offset都没有了，无法完成增量同步了。只能做全量同步。
+
+
+
+注意：repl_baklog大小有上限，写满后会覆盖最早的数据。如果slave断开时间过久，导 致尚未备份的数据被覆盖，则无法基于log做增量同步，只能再次全量同步。
+
+
+
+## 主从同步优化
+
+主从同步可以保证主从数据的一致性，非常重要。
+
+可以从以下几个方面来优化Redis主从就集群：
+
+- 在master中配置repl-diskless-sync yes启用无磁盘复制，避免全量同步时的磁盘IO。
+- Redis单节点上的内存占用不要太大，减少RDB导致的过多磁盘IO
+- 适当提高repl_baklog的大小，发现slave宕机时尽快实现故障恢复，尽可能避免全量同步
+- 限制一个master上的slave节点数量，如果实在是太多slave，则可以采用主-从-从链式结构，减少master压力
+
+
+
+## 全量同步和增量同步的区别
+
+- 全量同步：master将完整内存数据生成RDB，发送RDB到slave。后续命令则记录在repl_baklog，逐个发送给slave。
+- 增量同步：slave提交自己的offset到master，master获取repl_baklog中从offset之后的命令给slave
+
+## 什么时候执行全量同步
+
+- slave节点第一次连接master节点时
+- slave节点断开时间太久，repl_baklog中的offset已经被覆盖时
+
+## 什么时候执行增量同步
+
+* slave节点断开又恢复，并且在repl_baklog中能找到offset时
+
+
+
+## windows主从启动脚本
+
+创建bat文件，输入以下命令：
+
+```sh
+start "redis-7001" redis-server.exe redis1/redis.conf
+start "redis-7002" redis-server.exe redis2/redis.conf
+start "redis-7003" redis-server.exe redis3/redis.conf
+```
+
+
+
+
+
+# redis哨兵
+
+## 作用
+
+- **监控**：Sentinel 会不断检查您的master和slave是否按预期工作
+- **自动故障恢复**：如果master故障，Sentinel会将一个slave提升为master。当故障实例恢复后也以新的master为主
+- **通知**：Sentinel充当Redis客户端的服务发现来源，当集群发生故障转移时，会将最新信息推送给Redis的客户端
+
+
+
+## 集群监控原理
+
+Sentinel基于心跳机制监测服务状态，每隔1秒向集群的每个实例发送ping命令：
+
+* 主观下线：如果某sentinel节点发现某实例未在规定时间响应，则认为该实例**主观下线**。
+
+* 客观下线：若超过指定数量（quorum）的sentinel都认为该实例主观下线，则该实例**客观下线**。quorum值最好超过Sentinel实例数量的一半。
+
+
+
+## 集群故障恢复原理
+
+一旦发现master故障，sentinel需要在salve中选择一个作为新的master，选择依据是这样的：
+
+- 首先会判断slave节点与master节点断开时间长短，如果超过指定值（down-after-milliseconds * 10）则会排除该slave节点
+- 然后判断slave节点的slave-priority值，越小优先级越高，如果是0则永不参与选举
+- 如果slave-prority一样，则判断slave节点的offset值，越大说明数据越新，优先级越高
+- 最后是判断slave节点的运行id大小，越小优先级越高。
+
+
+
+## 如何实现切换
+
+- sentinel给备选的slave1节点发送slaveof no one命令，让该节点成为master
+- sentinel给所有其它slave发送slaveof 127.0.0.1 7002 命令，让这些slave成为新master的从节点，开始从新的master上同步数据。
+- 最后，sentinel将故障节点标记为slave，当故障节点恢复后会自动成为新的master的slave节点
+
+
+
+##  集群步骤
+
+三个sentinel节点的信息如下：
+
+* sentinel1：文件夹：./sentinel1   端口号：7501
+
+* sentinel2：文件夹：./sentinel2   端口号：7502
+
+* sentinel3：文件夹：./sentinel3   端口号：7503
+
+一个master节点：
+
+* master：文件夹：./redis1  端口号：7001
+
+两个slave节点：
+
+* slave1：文件夹：./redis2  端口号：7002
+* slave2：文件夹：./redis3  端口号：7003
+
+
+
+### 1.创建对应的文件夹
+
+7001、7002和7003节点参考主从集群
+
+### 2.分别在目录创建一个sentinel.conf文件
+
+sentinel1：
+
+```sh
+port 7501
+sentinel announce-ip 127.0.0.1
+sentinel monitor mymaster 127.0.0.1 7001 2
+sentinel down-after-milliseconds mymaster 5000
+sentinel failover-timeout mymaster 60000
+dir ./sentinel1
+```
+
+- `port 27001`：是当前sentinel实例的端口
+- `sentinel monitor mymaster 192.168.150.101 7001 2`：指定主节点信息
+  - `mymaster`：主节点名称，自定义，任意写
+  - `192.168.150.101 7001`：主节点的ip和端口
+  - `2`：选举master时的quorum值
+
+
+
+sentinel2：
+
+```sh
+port 7502
+sentinel announce-ip 127.0.0.1
+sentinel monitor mymaster 127.0.0.1 7001 2
+sentinel down-after-milliseconds mymaster 5000
+sentinel failover-timeout mymaster 60000
+dir ./sentinel2
+```
+
+
+
+sentinel3：
+
+```sh
+port 7503
+sentinel announce-ip 127.0.0.1
+sentinel monitor mymaster 127.0.0.1 7001 2
+sentinel down-after-milliseconds mymaster 5000
+sentinel failover-timeout mymaster 60000
+dir ./sentinel3
+```
+
+
+
+### 3.启动
+
+启动7001节点：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe redis1/redis.conf
+[5656] 22 May 21:56:08.584 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[5656] 22 May 21:56:08.584 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=5656, just started
+[5656] 22 May 21:56:08.584 # Configuration loaded
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in standalone mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7001
+ |    `-._   `._    /     _.-'    |     PID: 5656
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[5656] 22 May 21:56:08.587 # Server initialized
+[5656] 22 May 21:56:08.587 * DB loaded from disk: 0.000 seconds
+[5656] 22 May 21:56:08.587 * Ready to accept connections
+[5656] 22 May 21:56:10.999 * Replica 127.0.0.1:7002 asks for synchronization
+[5656] 22 May 21:56:10.999 * Partial resynchronization not accepted: Replication ID mismatch (Replica asked for '27683014f9088f12c2dde31f7a054b287c953c3a', my replication IDs are 'a7f60c53ee08d8e73c81b2ddb5ecb604727511dc' and '0000000000000000000000000000000000000000')
+[5656] 22 May 21:56:11.000 * Starting BGSAVE for SYNC with target: disk
+[5656] 22 May 21:56:11.027 * Background saving started by pid 6956
+[5656] 22 May 21:56:11.153 # fork operation complete
+[5656] 22 May 21:56:11.165 * Background saving terminated with success
+[5656] 22 May 21:56:11.171 * Synchronization with replica 127.0.0.1:7002 succeeded
+[5656] 22 May 21:56:16.174 * Replica 127.0.0.1:7003 asks for synchronization
+[5656] 22 May 21:56:16.174 * Partial resynchronization not accepted: Replication ID mismatch (Replica asked for 'ca9b9d1126598b78d418fb7bf136e91dd3d99174', my replication IDs are 'fb437967af3d1b63e3be97fe62b4853e954a20f1' and '0000000000000000000000000000000000000000')
+[5656] 22 May 21:56:16.174 * Starting BGSAVE for SYNC with target: disk
+[5656] 22 May 21:56:16.180 * Background saving started by pid 12796
+[5656] 22 May 21:56:16.274 # fork operation complete
+[5656] 22 May 21:56:16.284 * Background saving terminated with success
+[5656] 22 May 21:56:16.289 * Synchronization with replica 127.0.0.1:7003 succeeded
+
+```
+
+启动7002节点
+
+```sh
+
+C:\Program Files\redis>redis-server.exe redis2/redis.conf
+[3136] 22 May 21:56:10.994 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[3136] 22 May 21:56:10.994 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=3136, just started
+[3136] 22 May 21:56:10.994 # Configuration loaded
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in standalone mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7002
+ |    `-._   `._    /     _.-'    |     PID: 3136
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[3136] 22 May 21:56:10.997 # Server initialized
+[3136] 22 May 21:56:10.997 * DB loaded from disk: 0.000 seconds
+[3136] 22 May 21:56:10.997 * Before turning into a replica, using my master parameters to synthesize a cached master: I may be able to synchronize with the new master with just a partial transfer.
+[3136] 22 May 21:56:10.997 * Ready to accept connections
+[3136] 22 May 21:56:10.997 * Connecting to MASTER 127.0.0.1:7001
+[3136] 22 May 21:56:10.998 * MASTER <-> REPLICA sync started
+[3136] 22 May 21:56:10.998 * Non blocking connect for SYNC fired the event.
+[3136] 22 May 21:56:10.999 * Master replied to PING, replication can continue...
+[3136] 22 May 21:56:10.999 * Trying a partial resynchronization (request 27683014f9088f12c2dde31f7a054b287c953c3a:1).
+[3136] 22 May 21:56:11.027 * Full resync from master: fb437967af3d1b63e3be97fe62b4853e954a20f1:0
+[3136] 22 May 21:56:11.028 * Discarding previously cached master state.
+[3136] 22 May 21:56:11.171 * MASTER <-> REPLICA sync: receiving 189 bytes from master
+[3136] 22 May 21:56:11.173 * MASTER <-> REPLICA sync: Flushing old data
+[3136] 22 May 21:56:11.173 * MASTER <-> REPLICA sync: Loading DB in memory
+[3136] 22 May 21:56:11.176 * MASTER <-> REPLICA sync: Finished with success
+
+```
+
+
+
+启动7003节点：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe redis3/redis.conf
+[17744] 22 May 21:56:16.168 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[17744] 22 May 21:56:16.168 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=17744, just started
+[17744] 22 May 21:56:16.168 # Configuration loaded
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in standalone mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7003
+ |    `-._   `._    /     _.-'    |     PID: 17744
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[17744] 22 May 21:56:16.171 # Server initialized
+[17744] 22 May 21:56:16.171 * DB loaded from disk: 0.000 seconds
+[17744] 22 May 21:56:16.171 * Before turning into a replica, using my master parameters to synthesize a cached master: I may be able to synchronize with the new master with just a partial transfer.
+[17744] 22 May 21:56:16.172 * Ready to accept connections
+[17744] 22 May 21:56:16.172 * Connecting to MASTER 127.0.0.1:7001
+[17744] 22 May 21:56:16.172 * MASTER <-> REPLICA sync started
+[17744] 22 May 21:56:16.172 * Non blocking connect for SYNC fired the event.
+[17744] 22 May 21:56:16.173 * Master replied to PING, replication can continue...
+[17744] 22 May 21:56:16.173 * Trying a partial resynchronization (request ca9b9d1126598b78d418fb7bf136e91dd3d99174:1435).
+[17744] 22 May 21:56:16.181 * Full resync from master: fb437967af3d1b63e3be97fe62b4853e954a20f1:0
+[17744] 22 May 21:56:16.181 * Discarding previously cached master state.
+[17744] 22 May 21:56:16.289 * MASTER <-> REPLICA sync: receiving 189 bytes from master
+[17744] 22 May 21:56:16.290 * MASTER <-> REPLICA sync: Flushing old data
+[17744] 22 May 21:56:16.293 * MASTER <-> REPLICA sync: Loading DB in memory
+[17744] 22 May 21:56:16.294 * MASTER <-> REPLICA sync: Finished with success
+
+```
+
+
+
+
+
+启动三个哨兵服务：
+
+```sh
+# 第1个
+redis-server.exe sentinel1/sentinel.conf --sentinel
+# 第2个
+redis-server.exe sentinel2/sentinel.conf --sentinel
+# 第3个
+redis-server.exe sentinel3/sentinel.conf --sentinel
+```
+
+
+
+第一个：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe sentinel1/sentinel.conf --sentinel
+[15520] 22 May 22:00:03.413 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[15520] 22 May 22:00:03.413 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=15520, just started
+[15520] 22 May 22:00:03.413 # Configuration loaded
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in sentinel mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7501
+ |    `-._   `._    /     _.-'    |     PID: 15520
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[15520] 22 May 22:00:03.416 # Sentinel ID is 998f885399f6bcf3da404d8d332653d6c4137eff
+[15520] 22 May 22:00:03.416 # +monitor master mymaster 127.0.0.1 7001 quorum 2
+[15520] 22 May 22:00:03.418 * +slave slave 127.0.0.1:7002 127.0.0.1 7002 @ mymaster 127.0.0.1 7001
+[15520] 22 May 22:00:03.425 * +slave slave 127.0.0.1:7003 127.0.0.1 7003 @ mymaster 127.0.0.1 7001
+
+```
+
+第二个：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe sentinel2/sentinel.conf --sentinel
+[11912] 22 May 22:01:23.955 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[11912] 22 May 22:01:23.955 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=11912, just started
+[11912] 22 May 22:01:23.955 # Configuration loaded
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in sentinel mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7502
+ |    `-._   `._    /     _.-'    |     PID: 11912
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[11912] 22 May 22:01:23.958 # Sentinel ID is 0fa1387c46f90018527a3fa15771de5091da855a
+[11912] 22 May 22:01:23.958 # +monitor master mymaster 127.0.0.1 7001 quorum 2
+[11912] 22 May 22:01:23.968 * +slave slave 127.0.0.1:7002 127.0.0.1 7002 @ mymaster 127.0.0.1 7001
+[11912] 22 May 22:01:23.973 * +slave slave 127.0.0.1:7003 127.0.0.1 7003 @ mymaster 127.0.0.1 7001
+[11912] 22 May 22:01:24.904 * +sentinel sentinel 998f885399f6bcf3da404d8d332653d6c4137eff 127.0.0.1 7501 @ mymaster 127.0.0.1 7001
+
+```
+
+第三个：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe sentinel3/sentinel.conf --sentinel
+[18740] 22 May 22:02:19.809 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[18740] 22 May 22:02:19.810 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=18740, just started
+[18740] 22 May 22:02:19.810 # Configuration loaded
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in sentinel mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7503
+ |    `-._   `._    /     _.-'    |     PID: 18740
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[18740] 22 May 22:02:19.818 # Sentinel ID is b7fd68ca34e48df8850e596a35935a67a324aeae
+[18740] 22 May 22:02:19.818 # +monitor master mymaster 127.0.0.1 7001 quorum 2
+[18740] 22 May 22:02:19.819 * +slave slave 127.0.0.1:7002 127.0.0.1 7002 @ mymaster 127.0.0.1 7001
+[18740] 22 May 22:02:19.825 * +slave slave 127.0.0.1:7003 127.0.0.1 7003 @ mymaster 127.0.0.1 7001
+[18740] 22 May 22:02:20.026 * +sentinel sentinel 998f885399f6bcf3da404d8d332653d6c4137eff 127.0.0.1 7501 @ mymaster 127.0.0.1 7001
+[18740] 22 May 22:02:21.248 * +sentinel sentinel 0fa1387c46f90018527a3fa15771de5091da855a 127.0.0.1 7502 @ mymaster 127.0.0.1 7001
+
+```
+
+
+
+### 4. 测试关闭master
+
+关闭master节点(7001节点)：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe redis1/redis.conf
+[5656] 22 May 21:56:08.584 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[5656] 22 May 21:56:08.584 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=5656, just started
+[5656] 22 May 21:56:08.584 # Configuration loaded
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in standalone mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7001
+ |    `-._   `._    /     _.-'    |     PID: 5656
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[5656] 22 May 21:56:08.587 # Server initialized
+[5656] 22 May 21:56:08.587 * DB loaded from disk: 0.000 seconds
+[5656] 22 May 21:56:08.587 * Ready to accept connections
+[5656] 22 May 21:56:10.999 * Replica 127.0.0.1:7002 asks for synchronization
+[5656] 22 May 21:56:10.999 * Partial resynchronization not accepted: Replication ID mismatch (Replica asked for '27683014f9088f12c2dde31f7a054b287c953c3a', my replication IDs are 'a7f60c53ee08d8e73c81b2ddb5ecb604727511dc' and '0000000000000000000000000000000000000000')
+[5656] 22 May 21:56:11.000 * Starting BGSAVE for SYNC with target: disk
+[5656] 22 May 21:56:11.027 * Background saving started by pid 6956
+[5656] 22 May 21:56:11.153 # fork operation complete
+[5656] 22 May 21:56:11.165 * Background saving terminated with success
+[5656] 22 May 21:56:11.171 * Synchronization with replica 127.0.0.1:7002 succeeded
+[5656] 22 May 21:56:16.174 * Replica 127.0.0.1:7003 asks for synchronization
+[5656] 22 May 21:56:16.174 * Partial resynchronization not accepted: Replication ID mismatch (Replica asked for 'ca9b9d1126598b78d418fb7bf136e91dd3d99174', my replication IDs are 'fb437967af3d1b63e3be97fe62b4853e954a20f1' and '0000000000000000000000000000000000000000')
+[5656] 22 May 21:56:16.174 * Starting BGSAVE for SYNC with target: disk
+[5656] 22 May 21:56:16.180 * Background saving started by pid 12796
+[5656] 22 May 21:56:16.274 # fork operation complete
+[5656] 22 May 21:56:16.284 * Background saving terminated with success
+[5656] 22 May 21:56:16.289 * Synchronization with replica 127.0.0.1:7003 succeeded
+[5656] 22 May 22:07:18.096 # User requested shutdown...
+[5656] 22 May 22:07:18.096 * Saving the final RDB snapshot before exiting.
+[5656] 22 May 22:07:18.098 * DB saved on disk
+[5656] 22 May 22:07:18.098 # Redis is now ready to exit, bye bye...
+终止批处理操作吗(Y/N)?
+```
+
+
+
+7002节点：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe redis2/redis.conf
+[3136] 22 May 21:56:10.994 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[3136] 22 May 21:56:10.994 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=3136, just started
+[3136] 22 May 21:56:10.994 # Configuration loaded
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in standalone mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7002
+ |    `-._   `._    /     _.-'    |     PID: 3136
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[3136] 22 May 21:56:10.997 # Server initialized
+[3136] 22 May 21:56:10.997 * DB loaded from disk: 0.000 seconds
+[3136] 22 May 21:56:10.997 * Before turning into a replica, using my master parameters to synthesize a cached master: I may be able to synchronize with the new master with just a partial transfer.
+[3136] 22 May 21:56:10.997 * Ready to accept connections
+[3136] 22 May 21:56:10.997 * Connecting to MASTER 127.0.0.1:7001
+[3136] 22 May 21:56:10.998 * MASTER <-> REPLICA sync started
+[3136] 22 May 21:56:10.998 * Non blocking connect for SYNC fired the event.
+[3136] 22 May 21:56:10.999 * Master replied to PING, replication can continue...
+[3136] 22 May 21:56:10.999 * Trying a partial resynchronization (request 27683014f9088f12c2dde31f7a054b287c953c3a:1).
+[3136] 22 May 21:56:11.027 * Full resync from master: fb437967af3d1b63e3be97fe62b4853e954a20f1:0
+[3136] 22 May 21:56:11.028 * Discarding previously cached master state.
+[3136] 22 May 21:56:11.171 * MASTER <-> REPLICA sync: receiving 189 bytes from master
+[3136] 22 May 21:56:11.173 * MASTER <-> REPLICA sync: Flushing old data
+[3136] 22 May 21:56:11.173 * MASTER <-> REPLICA sync: Loading DB in memory
+[3136] 22 May 21:56:11.176 * MASTER <-> REPLICA sync: Finished with success
+[3136] 22 May 22:07:18.099 # Connection with master lost.
+[3136] 22 May 22:07:18.099 * Caching the disconnected master state.
+[3136] 22 May 22:07:18.792 * Connecting to MASTER 127.0.0.1:7001
+[3136] 22 May 22:07:18.792 * MASTER <-> REPLICA sync started
+[3136] 22 May 22:07:20.822 * Non blocking connect for SYNC fired the event.
+[3136] 22 May 22:07:20.822 # Sending command to master in replication handshake: -Writing to master: 找不到指 定的模块。
+[3136] 22 May 22:07:21.011 * Connecting to MASTER 127.0.0.1:7001
+[3136] 22 May 22:07:21.011 * MASTER <-> REPLICA sync started
+[3136] 22 May 22:07:23.043 * Non blocking connect for SYNC fired the event.
+[3136] 22 May 22:07:23.043 # Sending command to master in replication handshake: -Writing to master: 找不到指 定的模块。
+[3136] 22 May 22:07:23.233 * Connecting to MASTER 127.0.0.1:7001
+[3136] 22 May 22:07:23.233 * MASTER <-> REPLICA sync started
+[3136] 22 May 22:07:23.439 # Setting secondary replication ID to fb437967af3d1b63e3be97fe62b4853e954a20f1, valid up to offset: 70956. New replication ID is 710dc6e5b7f14e9a40fdf25833a7809e5ac18791
+[3136] 22 May 22:07:23.439 * Discarding previously cached master state.
+[3136] 22 May 22:07:23.440 * MASTER MODE enabled (user request from 'id=5 addr=127.0.0.1:65454 fd=9 name=sentinel-998f8853-cmd age=440 idle=0 flags=x db=0 sub=0 psub=0 multi=3 qbuf=140 qbuf-free=32628 obl=36 oll=0 omem=0 events=r cmd=exec')
+[3136] 22 May 22:07:23.452 # CONFIG REWRITE executed with success.
+[3136] 22 May 22:07:25.077 * Replica 127.0.0.1:7003 asks for synchronization
+[3136] 22 May 22:07:25.077 * Partial resynchronization request from 127.0.0.1:7003 accepted. Sending 551 bytes of backlog starting from offset 70956.
+
+```
+
+
+
+7003节点：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe redis3/redis.conf
+[17744] 22 May 21:56:16.168 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[17744] 22 May 21:56:16.168 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=17744, just started
+[17744] 22 May 21:56:16.168 # Configuration loaded
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in standalone mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7003
+ |    `-._   `._    /     _.-'    |     PID: 17744
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[17744] 22 May 21:56:16.171 # Server initialized
+[17744] 22 May 21:56:16.171 * DB loaded from disk: 0.000 seconds
+[17744] 22 May 21:56:16.171 * Before turning into a replica, using my master parameters to synthesize a cached master: I may be able to synchronize with the new master with just a partial transfer.
+[17744] 22 May 21:56:16.172 * Ready to accept connections
+[17744] 22 May 21:56:16.172 * Connecting to MASTER 127.0.0.1:7001
+[17744] 22 May 21:56:16.172 * MASTER <-> REPLICA sync started
+[17744] 22 May 21:56:16.172 * Non blocking connect for SYNC fired the event.
+[17744] 22 May 21:56:16.173 * Master replied to PING, replication can continue...
+[17744] 22 May 21:56:16.173 * Trying a partial resynchronization (request ca9b9d1126598b78d418fb7bf136e91dd3d99174:1435).
+[17744] 22 May 21:56:16.181 * Full resync from master: fb437967af3d1b63e3be97fe62b4853e954a20f1:0
+[17744] 22 May 21:56:16.181 * Discarding previously cached master state.
+[17744] 22 May 21:56:16.289 * MASTER <-> REPLICA sync: receiving 189 bytes from master
+[17744] 22 May 21:56:16.290 * MASTER <-> REPLICA sync: Flushing old data
+[17744] 22 May 21:56:16.293 * MASTER <-> REPLICA sync: Loading DB in memory
+[17744] 22 May 21:56:16.294 * MASTER <-> REPLICA sync: Finished with success
+[17744] 22 May 22:07:18.098 # Connection with master lost.
+[17744] 22 May 22:07:18.099 * Caching the disconnected master state.
+[17744] 22 May 22:07:18.412 * Connecting to MASTER 127.0.0.1:7001
+[17744] 22 May 22:07:18.412 * MASTER <-> REPLICA sync started
+[17744] 22 May 22:07:20.441 * Non blocking connect for SYNC fired the event.
+[17744] 22 May 22:07:20.441 # Sending command to master in replication handshake: -Writing to master: 找不到指定的模块。
+[17744] 22 May 22:07:20.632 * Connecting to MASTER 127.0.0.1:7001
+[17744] 22 May 22:07:20.632 * MASTER <-> REPLICA sync started
+[17744] 22 May 22:07:22.661 * Non blocking connect for SYNC fired the event.
+[17744] 22 May 22:07:22.661 # Sending command to master in replication handshake: -Writing to master: 找不到指定的模块。
+[17744] 22 May 22:07:22.852 * Connecting to MASTER 127.0.0.1:7001
+[17744] 22 May 22:07:22.852 * MASTER <-> REPLICA sync started
+[17744] 22 May 22:07:24.311 * REPLICAOF 127.0.0.1:7002 enabled (user request from 'id=5 addr=127.0.0.1:65456 fd=9 name=sentinel-998f8853-cmd age=441 idle=0 flags=x db=0 sub=0 psub=0 multi=3 qbuf=280 qbuf-free=32488 obl=36 oll=0 omem=0 events=r cmd=exec')
+[17744] 22 May 22:07:24.324 # CONFIG REWRITE executed with success.
+[17744] 22 May 22:07:25.075 * Connecting to MASTER 127.0.0.1:7002
+[17744] 22 May 22:07:25.075 * MASTER <-> REPLICA sync started
+[17744] 22 May 22:07:25.076 * Non blocking connect for SYNC fired the event.
+[17744] 22 May 22:07:25.076 * Master replied to PING, replication can continue...
+[17744] 22 May 22:07:25.077 * Trying a partial resynchronization (request fb437967af3d1b63e3be97fe62b4853e954a20f1:70956).
+[17744] 22 May 22:07:25.077 * Successful partial resynchronization with master.
+[17744] 22 May 22:07:25.078 # Master replication ID changed to 710dc6e5b7f14e9a40fdf25833a7809e5ac18791
+[17744] 22 May 22:07:25.078 * MASTER <-> REPLICA sync: Master accepted a Partial Resynchronization.
+
+```
+
+
+
+哨兵7501节点：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe sentinel1/sentinel.conf --sentinel
+[15520] 22 May 22:00:03.413 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[15520] 22 May 22:00:03.413 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=15520, just started
+[15520] 22 May 22:00:03.413 # Configuration loaded
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in sentinel mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7501
+ |    `-._   `._    /     _.-'    |     PID: 15520
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[15520] 22 May 22:00:03.416 # Sentinel ID is 998f885399f6bcf3da404d8d332653d6c4137eff
+[15520] 22 May 22:00:03.416 # +monitor master mymaster 127.0.0.1 7001 quorum 2
+[15520] 22 May 22:00:03.418 * +slave slave 127.0.0.1:7002 127.0.0.1 7002 @ mymaster 127.0.0.1 7001
+[15520] 22 May 22:00:03.425 * +slave slave 127.0.0.1:7003 127.0.0.1 7003 @ mymaster 127.0.0.1 7001
+[15520] 22 May 22:01:25.957 * +sentinel sentinel 0fa1387c46f90018527a3fa15771de5091da855a 127.0.0.1 7502 @ mymaster 127.0.0.1 7001
+[15520] 22 May 22:02:21.870 * +sentinel sentinel b7fd68ca34e48df8850e596a35935a67a324aeae 127.0.0.1 7503 @ mymaster 127.0.0.1 7001
+[15520] 22 May 22:07:23.170 # +sdown master mymaster 127.0.0.1 7001
+[15520] 22 May 22:07:23.233 # +odown master mymaster 127.0.0.1 7001 #quorum 2/2
+[15520] 22 May 22:07:23.233 # +new-epoch 1
+[15520] 22 May 22:07:23.233 # +try-failover master mymaster 127.0.0.1 7001
+[15520] 22 May 22:07:23.241 # +vote-for-leader 998f885399f6bcf3da404d8d332653d6c4137eff 1
+[15520] 22 May 22:07:23.252 # b7fd68ca34e48df8850e596a35935a67a324aeae voted for 998f885399f6bcf3da404d8d332653d6c4137eff 1
+[15520] 22 May 22:07:23.254 # 0fa1387c46f90018527a3fa15771de5091da855a voted for 998f885399f6bcf3da404d8d332653d6c4137eff 1
+[15520] 22 May 22:07:23.297 # +elected-leader master mymaster 127.0.0.1 7001
+[15520] 22 May 22:07:23.297 # +failover-state-select-slave master mymaster 127.0.0.1 7001
+[15520] 22 May 22:07:23.361 # +selected-slave slave 127.0.0.1:7002 127.0.0.1 7002 @ mymaster 127.0.0.1 7001
+[15520] 22 May 22:07:23.361 * +failover-state-send-slaveof-noone slave 127.0.0.1:7002 127.0.0.1 7002 @ mymaster 127.0.0.1 7001
+[15520] 22 May 22:07:23.439 * +failover-state-wait-promotion slave 127.0.0.1:7002 127.0.0.1 7002 @ mymaster 127.0.0.1 7001
+[15520] 22 May 22:07:24.254 # +promoted-slave slave 127.0.0.1:7002 127.0.0.1 7002 @ mymaster 127.0.0.1 7001
+[15520] 22 May 22:07:24.254 # +failover-state-reconf-slaves master mymaster 127.0.0.1 7001
+[15520] 22 May 22:07:24.311 * +slave-reconf-sent slave 127.0.0.1:7003 127.0.0.1 7003 @ mymaster 127.0.0.1 7001
+[15520] 22 May 22:07:25.282 * +slave-reconf-inprog slave 127.0.0.1:7003 127.0.0.1 7003 @ mymaster 127.0.0.1 7001
+[15520] 22 May 22:07:25.282 * +slave-reconf-done slave 127.0.0.1:7003 127.0.0.1 7003 @ mymaster 127.0.0.1 7001
+[15520] 22 May 22:07:25.362 # +failover-end master mymaster 127.0.0.1 7001
+[15520] 22 May 22:07:25.362 # +switch-master mymaster 127.0.0.1 7001 127.0.0.1 7002
+[15520] 22 May 22:07:25.369 * +slave slave 127.0.0.1:7003 127.0.0.1 7003 @ mymaster 127.0.0.1 7002
+[15520] 22 May 22:07:25.374 * +slave slave 127.0.0.1:7001 127.0.0.1 7001 @ mymaster 127.0.0.1 7002
+[15520] 22 May 22:07:30.438 # +sdown slave 127.0.0.1:7001 127.0.0.1 7001 @ mymaster 127.0.0.1 7002
+
+```
+
+
+
+哨兵7502节点：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe sentinel2/sentinel.conf --sentinel
+[11912] 22 May 22:01:23.955 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[11912] 22 May 22:01:23.955 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=11912, just started
+[11912] 22 May 22:01:23.955 # Configuration loaded
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in sentinel mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7502
+ |    `-._   `._    /     _.-'    |     PID: 11912
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[11912] 22 May 22:01:23.958 # Sentinel ID is 0fa1387c46f90018527a3fa15771de5091da855a
+[11912] 22 May 22:01:23.958 # +monitor master mymaster 127.0.0.1 7001 quorum 2
+[11912] 22 May 22:01:23.968 * +slave slave 127.0.0.1:7002 127.0.0.1 7002 @ mymaster 127.0.0.1 7001
+[11912] 22 May 22:01:23.973 * +slave slave 127.0.0.1:7003 127.0.0.1 7003 @ mymaster 127.0.0.1 7001
+[11912] 22 May 22:01:24.904 * +sentinel sentinel 998f885399f6bcf3da404d8d332653d6c4137eff 127.0.0.1 7501 @ mymaster 127.0.0.1 7001
+[11912] 22 May 22:02:21.870 * +sentinel sentinel b7fd68ca34e48df8850e596a35935a67a324aeae 127.0.0.1 7503 @ mymaster 127.0.0.1 7001
+[11912] 22 May 22:07:23.233 # +sdown master mymaster 127.0.0.1 7001
+[11912] 22 May 22:07:23.247 # +new-epoch 1
+[11912] 22 May 22:07:23.254 # +vote-for-leader 998f885399f6bcf3da404d8d332653d6c4137eff 1
+[11912] 22 May 22:07:23.345 # +odown master mymaster 127.0.0.1 7001 #quorum 3/2
+[11912] 22 May 22:07:23.345 # Next failover delay: I will not start a failover before Sun May 22 22:09:23 2022
+[11912] 22 May 22:07:24.311 # +config-update-from sentinel 998f885399f6bcf3da404d8d332653d6c4137eff 127.0.0.1 7501 @ mymaster 127.0.0.1 7001
+[11912] 22 May 22:07:24.311 # +switch-master mymaster 127.0.0.1 7001 127.0.0.1 7002
+[11912] 22 May 22:07:24.313 * +slave slave 127.0.0.1:7003 127.0.0.1 7003 @ mymaster 127.0.0.1 7002
+[11912] 22 May 22:07:24.317 * +slave slave 127.0.0.1:7001 127.0.0.1 7001 @ mymaster 127.0.0.1 7002
+[11912] 22 May 22:07:29.360 # +sdown slave 127.0.0.1:7001 127.0.0.1 7001 @ mymaster 127.0.0.1 7002
+
+```
+
+
+
+哨兵7503节点：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe sentinel3/sentinel.conf --sentinel
+[18740] 22 May 22:02:19.809 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[18740] 22 May 22:02:19.810 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=18740, just started
+[18740] 22 May 22:02:19.810 # Configuration loaded
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in sentinel mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7503
+ |    `-._   `._    /     _.-'    |     PID: 18740
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[18740] 22 May 22:02:19.818 # Sentinel ID is b7fd68ca34e48df8850e596a35935a67a324aeae
+[18740] 22 May 22:02:19.818 # +monitor master mymaster 127.0.0.1 7001 quorum 2
+[18740] 22 May 22:02:19.819 * +slave slave 127.0.0.1:7002 127.0.0.1 7002 @ mymaster 127.0.0.1 7001
+[18740] 22 May 22:02:19.825 * +slave slave 127.0.0.1:7003 127.0.0.1 7003 @ mymaster 127.0.0.1 7001
+[18740] 22 May 22:02:20.026 * +sentinel sentinel 998f885399f6bcf3da404d8d332653d6c4137eff 127.0.0.1 7501 @ mymaster 127.0.0.1 7001
+[18740] 22 May 22:02:21.248 * +sentinel sentinel 0fa1387c46f90018527a3fa15771de5091da855a 127.0.0.1 7502 @ mymaster 127.0.0.1 7001
+[18740] 22 May 22:07:23.170 # +sdown master mymaster 127.0.0.1 7001
+[18740] 22 May 22:07:23.246 # +new-epoch 1
+[18740] 22 May 22:07:23.252 # +vote-for-leader 998f885399f6bcf3da404d8d332653d6c4137eff 1
+[18740] 22 May 22:07:23.281 # +odown master mymaster 127.0.0.1 7001 #quorum 2/2
+[18740] 22 May 22:07:23.281 # Next failover delay: I will not start a failover before Sun May 22 22:09:23 2022
+[18740] 22 May 22:07:24.311 # +config-update-from sentinel 998f885399f6bcf3da404d8d332653d6c4137eff 127.0.0.1 7501 @ mymaster 127.0.0.1 7001
+[18740] 22 May 22:07:24.312 # +switch-master mymaster 127.0.0.1 7001 127.0.0.1 7002
+[18740] 22 May 22:07:24.313 * +slave slave 127.0.0.1:7003 127.0.0.1 7003 @ mymaster 127.0.0.1 7002
+[18740] 22 May 22:07:24.317 * +slave slave 127.0.0.1:7001 127.0.0.1 7001 @ mymaster 127.0.0.1 7002
+[18740] 22 May 22:07:29.328 # +sdown slave 127.0.0.1:7001 127.0.0.1 7001 @ mymaster 127.0.0.1 7002
+
+```
+
+
+
+### 5.测试重新启动master
+
+重新启动7001节点
+
+```sh
+
+C:\Program Files\redis>redis-server.exe redis1/redis.conf
+[16868] 22 May 22:15:10.604 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[16868] 22 May 22:15:10.604 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=16868, just started
+[16868] 22 May 22:15:10.605 # Configuration loaded
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in standalone mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7001
+ |    `-._   `._    /     _.-'    |     PID: 16868
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[16868] 22 May 22:15:10.608 # Server initialized
+[16868] 22 May 22:15:10.612 * DB loaded from disk: 0.004 seconds
+[16868] 22 May 22:15:10.612 * Ready to accept connections
+[16868] 22 May 22:15:22.995 * Before turning into a replica, using my master parameters to synthesize a cached master: I may be able to synchronize with the new master with just a partial transfer.
+[16868] 22 May 22:15:22.995 * REPLICAOF 127.0.0.1:7002 enabled (user request from 'id=3 addr=127.0.0.1:49843 fd=9 name=sentinel-b7fd68ca-cmd age=10 idle=0 flags=x db=0 sub=0 psub=0 multi=3 qbuf=148 qbuf-free=32620 obl=36 oll=0 omem=0 events=r cmd=exec')
+[16868] 22 May 22:15:22.999 # CONFIG REWRITE executed with success.
+[16868] 22 May 22:15:23.982 * Connecting to MASTER 127.0.0.1:7002
+[16868] 22 May 22:15:23.982 * MASTER <-> REPLICA sync started
+[16868] 22 May 22:15:23.983 * Non blocking connect for SYNC fired the event.
+[16868] 22 May 22:15:23.983 * Master replied to PING, replication can continue...
+[16868] 22 May 22:15:23.983 * Trying a partial resynchronization (request 8b867f59f828ddf06fca6540e333b40c3834c0fe:1).
+[16868] 22 May 22:15:23.995 * Full resync from master: 710dc6e5b7f14e9a40fdf25833a7809e5ac18791:164904
+[16868] 22 May 22:15:23.995 * Discarding previously cached master state.
+[16868] 22 May 22:15:24.181 * MASTER <-> REPLICA sync: receiving 192 bytes from master
+[16868] 22 May 22:15:24.183 * MASTER <-> REPLICA sync: Flushing old data
+[16868] 22 May 22:15:24.183 * MASTER <-> REPLICA sync: Loading DB in memory
+[16868] 22 May 22:15:24.185 * MASTER <-> REPLICA sync: Finished with success
+
+```
+
+
+
+其它节点变化：
+
+7002节点：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe redis2/redis.conf
+[3136] 22 May 21:56:10.994 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[3136] 22 May 21:56:10.994 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=3136, just started
+[3136] 22 May 21:56:10.994 # Configuration loaded
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in standalone mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7002
+ |    `-._   `._    /     _.-'    |     PID: 3136
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[3136] 22 May 21:56:10.997 # Server initialized
+[3136] 22 May 21:56:10.997 * DB loaded from disk: 0.000 seconds
+[3136] 22 May 21:56:10.997 * Before turning into a replica, using my master parameters to synthesize a cached master: I may be able to synchronize with the new master with just a partial transfer.
+[3136] 22 May 21:56:10.997 * Ready to accept connections
+[3136] 22 May 21:56:10.997 * Connecting to MASTER 127.0.0.1:7001
+[3136] 22 May 21:56:10.998 * MASTER <-> REPLICA sync started
+[3136] 22 May 21:56:10.998 * Non blocking connect for SYNC fired the event.
+[3136] 22 May 21:56:10.999 * Master replied to PING, replication can continue...
+[3136] 22 May 21:56:10.999 * Trying a partial resynchronization (request 27683014f9088f12c2dde31f7a054b287c953c3a:1).
+[3136] 22 May 21:56:11.027 * Full resync from master: fb437967af3d1b63e3be97fe62b4853e954a20f1:0
+[3136] 22 May 21:56:11.028 * Discarding previously cached master state.
+[3136] 22 May 21:56:11.171 * MASTER <-> REPLICA sync: receiving 189 bytes from master
+[3136] 22 May 21:56:11.173 * MASTER <-> REPLICA sync: Flushing old data
+[3136] 22 May 21:56:11.173 * MASTER <-> REPLICA sync: Loading DB in memory
+[3136] 22 May 21:56:11.176 * MASTER <-> REPLICA sync: Finished with success
+[3136] 22 May 22:07:18.099 # Connection with master lost.
+[3136] 22 May 22:07:18.099 * Caching the disconnected master state.
+[3136] 22 May 22:07:18.792 * Connecting to MASTER 127.0.0.1:7001
+[3136] 22 May 22:07:18.792 * MASTER <-> REPLICA sync started
+[3136] 22 May 22:07:20.822 * Non blocking connect for SYNC fired the event.
+[3136] 22 May 22:07:20.822 # Sending command to master in replication handshake: -Writing to master: 找不到指 定的模块。
+[3136] 22 May 22:07:21.011 * Connecting to MASTER 127.0.0.1:7001
+[3136] 22 May 22:07:21.011 * MASTER <-> REPLICA sync started
+[3136] 22 May 22:07:23.043 * Non blocking connect for SYNC fired the event.
+[3136] 22 May 22:07:23.043 # Sending command to master in replication handshake: -Writing to master: 找不到指 定的模块。
+[3136] 22 May 22:07:23.233 * Connecting to MASTER 127.0.0.1:7001
+[3136] 22 May 22:07:23.233 * MASTER <-> REPLICA sync started
+[3136] 22 May 22:07:23.439 # Setting secondary replication ID to fb437967af3d1b63e3be97fe62b4853e954a20f1, valid up to offset: 70956. New replication ID is 710dc6e5b7f14e9a40fdf25833a7809e5ac18791
+[3136] 22 May 22:07:23.439 * Discarding previously cached master state.
+[3136] 22 May 22:07:23.440 * MASTER MODE enabled (user request from 'id=5 addr=127.0.0.1:65454 fd=9 name=sentinel-998f8853-cmd age=440 idle=0 flags=x db=0 sub=0 psub=0 multi=3 qbuf=140 qbuf-free=32628 obl=36 oll=0 omem=0 events=r cmd=exec')
+[3136] 22 May 22:07:23.452 # CONFIG REWRITE executed with success.
+[3136] 22 May 22:07:25.077 * Replica 127.0.0.1:7003 asks for synchronization
+[3136] 22 May 22:07:25.077 * Partial resynchronization request from 127.0.0.1:7003 accepted. Sending 551 bytes of backlog starting from offset 70956.
+[3136] 22 May 22:15:23.983 * Replica 127.0.0.1:7001 asks for synchronization
+[3136] 22 May 22:15:23.984 * Partial resynchronization not accepted: Replication ID mismatch (Replica asked for '8b867f59f828ddf06fca6540e333b40c3834c0fe', my replication IDs are '710dc6e5b7f14e9a40fdf25833a7809e5ac18791' and 'fb437967af3d1b63e3be97fe62b4853e954a20f1')
+[3136] 22 May 22:15:23.987 * Starting BGSAVE for SYNC with target: disk
+[3136] 22 May 22:15:23.995 * Background saving started by pid 8712
+[3136] 22 May 22:15:24.157 # fork operation complete
+[3136] 22 May 22:15:24.175 * Background saving terminated with success
+[3136] 22 May 22:15:24.182 * Synchronization with replica 127.0.0.1:7001 succeeded
+
+```
+
+
+
+7003节点：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe redis3/redis.conf
+[17744] 22 May 21:56:16.168 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[17744] 22 May 21:56:16.168 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=17744, just started
+[17744] 22 May 21:56:16.168 # Configuration loaded
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in standalone mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7003
+ |    `-._   `._    /     _.-'    |     PID: 17744
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[17744] 22 May 21:56:16.171 # Server initialized
+[17744] 22 May 21:56:16.171 * DB loaded from disk: 0.000 seconds
+[17744] 22 May 21:56:16.171 * Before turning into a replica, using my master parameters to synthesize a cached master: I may be able to synchronize with the new master with just a partial transfer.
+[17744] 22 May 21:56:16.172 * Ready to accept connections
+[17744] 22 May 21:56:16.172 * Connecting to MASTER 127.0.0.1:7001
+[17744] 22 May 21:56:16.172 * MASTER <-> REPLICA sync started
+[17744] 22 May 21:56:16.172 * Non blocking connect for SYNC fired the event.
+[17744] 22 May 21:56:16.173 * Master replied to PING, replication can continue...
+[17744] 22 May 21:56:16.173 * Trying a partial resynchronization (request ca9b9d1126598b78d418fb7bf136e91dd3d99174:1435).
+[17744] 22 May 21:56:16.181 * Full resync from master: fb437967af3d1b63e3be97fe62b4853e954a20f1:0
+[17744] 22 May 21:56:16.181 * Discarding previously cached master state.
+[17744] 22 May 21:56:16.289 * MASTER <-> REPLICA sync: receiving 189 bytes from master
+[17744] 22 May 21:56:16.290 * MASTER <-> REPLICA sync: Flushing old data
+[17744] 22 May 21:56:16.293 * MASTER <-> REPLICA sync: Loading DB in memory
+[17744] 22 May 21:56:16.294 * MASTER <-> REPLICA sync: Finished with success
+[17744] 22 May 22:07:18.098 # Connection with master lost.
+[17744] 22 May 22:07:18.099 * Caching the disconnected master state.
+[17744] 22 May 22:07:18.412 * Connecting to MASTER 127.0.0.1:7001
+[17744] 22 May 22:07:18.412 * MASTER <-> REPLICA sync started
+[17744] 22 May 22:07:20.441 * Non blocking connect for SYNC fired the event.
+[17744] 22 May 22:07:20.441 # Sending command to master in replication handshake: -Writing to master: 找不到指定的模块。
+[17744] 22 May 22:07:20.632 * Connecting to MASTER 127.0.0.1:7001
+[17744] 22 May 22:07:20.632 * MASTER <-> REPLICA sync started
+[17744] 22 May 22:07:22.661 * Non blocking connect for SYNC fired the event.
+[17744] 22 May 22:07:22.661 # Sending command to master in replication handshake: -Writing to master: 找不到指定的模块。
+[17744] 22 May 22:07:22.852 * Connecting to MASTER 127.0.0.1:7001
+[17744] 22 May 22:07:22.852 * MASTER <-> REPLICA sync started
+[17744] 22 May 22:07:24.311 * REPLICAOF 127.0.0.1:7002 enabled (user request from 'id=5 addr=127.0.0.1:65456 fd=9 name=sentinel-998f8853-cmd age=441 idle=0 flags=x db=0 sub=0 psub=0 multi=3 qbuf=280 qbuf-free=32488 obl=36 oll=0 omem=0 events=r cmd=exec')
+[17744] 22 May 22:07:24.324 # CONFIG REWRITE executed with success.
+[17744] 22 May 22:07:25.075 * Connecting to MASTER 127.0.0.1:7002
+[17744] 22 May 22:07:25.075 * MASTER <-> REPLICA sync started
+[17744] 22 May 22:07:25.076 * Non blocking connect for SYNC fired the event.
+[17744] 22 May 22:07:25.076 * Master replied to PING, replication can continue...
+[17744] 22 May 22:07:25.077 * Trying a partial resynchronization (request fb437967af3d1b63e3be97fe62b4853e954a20f1:70956).
+[17744] 22 May 22:07:25.077 * Successful partial resynchronization with master.
+[17744] 22 May 22:07:25.078 # Master replication ID changed to 710dc6e5b7f14e9a40fdf25833a7809e5ac18791
+[17744] 22 May 22:07:25.078 * MASTER <-> REPLICA sync: Master accepted a Partial Resynchronization.
+
+```
+
+
+
+哨兵7501节点：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe sentinel1/sentinel.conf --sentinel
+[15520] 22 May 22:00:03.413 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[15520] 22 May 22:00:03.413 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=15520, just started
+[15520] 22 May 22:00:03.413 # Configuration loaded
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in sentinel mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7501
+ |    `-._   `._    /     _.-'    |     PID: 15520
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[15520] 22 May 22:00:03.416 # Sentinel ID is 998f885399f6bcf3da404d8d332653d6c4137eff
+[15520] 22 May 22:00:03.416 # +monitor master mymaster 127.0.0.1 7001 quorum 2
+[15520] 22 May 22:00:03.418 * +slave slave 127.0.0.1:7002 127.0.0.1 7002 @ mymaster 127.0.0.1 7001
+[15520] 22 May 22:00:03.425 * +slave slave 127.0.0.1:7003 127.0.0.1 7003 @ mymaster 127.0.0.1 7001
+[15520] 22 May 22:01:25.957 * +sentinel sentinel 0fa1387c46f90018527a3fa15771de5091da855a 127.0.0.1 7502 @ mymaster 127.0.0.1 7001
+[15520] 22 May 22:02:21.870 * +sentinel sentinel b7fd68ca34e48df8850e596a35935a67a324aeae 127.0.0.1 7503 @ mymaster 127.0.0.1 7001
+[15520] 22 May 22:07:23.170 # +sdown master mymaster 127.0.0.1 7001
+[15520] 22 May 22:07:23.233 # +odown master mymaster 127.0.0.1 7001 #quorum 2/2
+[15520] 22 May 22:07:23.233 # +new-epoch 1
+[15520] 22 May 22:07:23.233 # +try-failover master mymaster 127.0.0.1 7001
+[15520] 22 May 22:07:23.241 # +vote-for-leader 998f885399f6bcf3da404d8d332653d6c4137eff 1
+[15520] 22 May 22:07:23.252 # b7fd68ca34e48df8850e596a35935a67a324aeae voted for 998f885399f6bcf3da404d8d332653d6c4137eff 1
+[15520] 22 May 22:07:23.254 # 0fa1387c46f90018527a3fa15771de5091da855a voted for 998f885399f6bcf3da404d8d332653d6c4137eff 1
+[15520] 22 May 22:07:23.297 # +elected-leader master mymaster 127.0.0.1 7001
+[15520] 22 May 22:07:23.297 # +failover-state-select-slave master mymaster 127.0.0.1 7001
+[15520] 22 May 22:07:23.361 # +selected-slave slave 127.0.0.1:7002 127.0.0.1 7002 @ mymaster 127.0.0.1 7001
+[15520] 22 May 22:07:23.361 * +failover-state-send-slaveof-noone slave 127.0.0.1:7002 127.0.0.1 7002 @ mymaster 127.0.0.1 7001
+[15520] 22 May 22:07:23.439 * +failover-state-wait-promotion slave 127.0.0.1:7002 127.0.0.1 7002 @ mymaster 127.0.0.1 7001
+[15520] 22 May 22:07:24.254 # +promoted-slave slave 127.0.0.1:7002 127.0.0.1 7002 @ mymaster 127.0.0.1 7001
+[15520] 22 May 22:07:24.254 # +failover-state-reconf-slaves master mymaster 127.0.0.1 7001
+[15520] 22 May 22:07:24.311 * +slave-reconf-sent slave 127.0.0.1:7003 127.0.0.1 7003 @ mymaster 127.0.0.1 7001
+[15520] 22 May 22:07:25.282 * +slave-reconf-inprog slave 127.0.0.1:7003 127.0.0.1 7003 @ mymaster 127.0.0.1 7001
+[15520] 22 May 22:07:25.282 * +slave-reconf-done slave 127.0.0.1:7003 127.0.0.1 7003 @ mymaster 127.0.0.1 7001
+[15520] 22 May 22:07:25.362 # +failover-end master mymaster 127.0.0.1 7001
+[15520] 22 May 22:07:25.362 # +switch-master mymaster 127.0.0.1 7001 127.0.0.1 7002
+[15520] 22 May 22:07:25.369 * +slave slave 127.0.0.1:7003 127.0.0.1 7003 @ mymaster 127.0.0.1 7002
+[15520] 22 May 22:07:25.374 * +slave slave 127.0.0.1:7001 127.0.0.1 7001 @ mymaster 127.0.0.1 7002
+[15520] 22 May 22:07:30.438 # +sdown slave 127.0.0.1:7001 127.0.0.1 7001 @ mymaster 127.0.0.1 7002
+[15520] 22 May 22:15:14.153 # -sdown slave 127.0.0.1:7001 127.0.0.1 7001 @ mymaster 127.0.0.1 7002
+
+```
+
+
+
+哨兵7502节点：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe sentinel2/sentinel.conf --sentinel
+[11912] 22 May 22:01:23.955 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[11912] 22 May 22:01:23.955 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=11912, just started
+[11912] 22 May 22:01:23.955 # Configuration loaded
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in sentinel mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7502
+ |    `-._   `._    /     _.-'    |     PID: 11912
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[11912] 22 May 22:01:23.958 # Sentinel ID is 0fa1387c46f90018527a3fa15771de5091da855a
+[11912] 22 May 22:01:23.958 # +monitor master mymaster 127.0.0.1 7001 quorum 2
+[11912] 22 May 22:01:23.968 * +slave slave 127.0.0.1:7002 127.0.0.1 7002 @ mymaster 127.0.0.1 7001
+[11912] 22 May 22:01:23.973 * +slave slave 127.0.0.1:7003 127.0.0.1 7003 @ mymaster 127.0.0.1 7001
+[11912] 22 May 22:01:24.904 * +sentinel sentinel 998f885399f6bcf3da404d8d332653d6c4137eff 127.0.0.1 7501 @ mymaster 127.0.0.1 7001
+[11912] 22 May 22:02:21.870 * +sentinel sentinel b7fd68ca34e48df8850e596a35935a67a324aeae 127.0.0.1 7503 @ mymaster 127.0.0.1 7001
+[11912] 22 May 22:07:23.233 # +sdown master mymaster 127.0.0.1 7001
+[11912] 22 May 22:07:23.247 # +new-epoch 1
+[11912] 22 May 22:07:23.254 # +vote-for-leader 998f885399f6bcf3da404d8d332653d6c4137eff 1
+[11912] 22 May 22:07:23.345 # +odown master mymaster 127.0.0.1 7001 #quorum 3/2
+[11912] 22 May 22:07:23.345 # Next failover delay: I will not start a failover before Sun May 22 22:09:23 2022
+[11912] 22 May 22:07:24.311 # +config-update-from sentinel 998f885399f6bcf3da404d8d332653d6c4137eff 127.0.0.1 7501 @ mymaster 127.0.0.1 7001
+[11912] 22 May 22:07:24.311 # +switch-master mymaster 127.0.0.1 7001 127.0.0.1 7002
+[11912] 22 May 22:07:24.313 * +slave slave 127.0.0.1:7003 127.0.0.1 7003 @ mymaster 127.0.0.1 7002
+[11912] 22 May 22:07:24.317 * +slave slave 127.0.0.1:7001 127.0.0.1 7001 @ mymaster 127.0.0.1 7002
+[11912] 22 May 22:07:29.360 # +sdown slave 127.0.0.1:7001 127.0.0.1 7001 @ mymaster 127.0.0.1 7002
+[11912] 22 May 22:15:13.071 # -sdown slave 127.0.0.1:7001 127.0.0.1 7001 @ mymaster 127.0.0.1 7002
+
+```
+
+
+
+哨兵7503节点：
+
+```sh
+
+C:\Program Files\redis>redis-server.exe sentinel3/sentinel.conf --sentinel
+[18740] 22 May 22:02:19.809 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[18740] 22 May 22:02:19.810 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=18740, just started
+[18740] 22 May 22:02:19.810 # Configuration loaded
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in sentinel mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7503
+ |    `-._   `._    /     _.-'    |     PID: 18740
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[18740] 22 May 22:02:19.818 # Sentinel ID is b7fd68ca34e48df8850e596a35935a67a324aeae
+[18740] 22 May 22:02:19.818 # +monitor master mymaster 127.0.0.1 7001 quorum 2
+[18740] 22 May 22:02:19.819 * +slave slave 127.0.0.1:7002 127.0.0.1 7002 @ mymaster 127.0.0.1 7001
+[18740] 22 May 22:02:19.825 * +slave slave 127.0.0.1:7003 127.0.0.1 7003 @ mymaster 127.0.0.1 7001
+[18740] 22 May 22:02:20.026 * +sentinel sentinel 998f885399f6bcf3da404d8d332653d6c4137eff 127.0.0.1 7501 @ mymaster 127.0.0.1 7001
+[18740] 22 May 22:02:21.248 * +sentinel sentinel 0fa1387c46f90018527a3fa15771de5091da855a 127.0.0.1 7502 @ mymaster 127.0.0.1 7001
+[18740] 22 May 22:07:23.170 # +sdown master mymaster 127.0.0.1 7001
+[18740] 22 May 22:07:23.246 # +new-epoch 1
+[18740] 22 May 22:07:23.252 # +vote-for-leader 998f885399f6bcf3da404d8d332653d6c4137eff 1
+[18740] 22 May 22:07:23.281 # +odown master mymaster 127.0.0.1 7001 #quorum 2/2
+[18740] 22 May 22:07:23.281 # Next failover delay: I will not start a failover before Sun May 22 22:09:23 2022
+[18740] 22 May 22:07:24.311 # +config-update-from sentinel 998f885399f6bcf3da404d8d332653d6c4137eff 127.0.0.1 7501 @ mymaster 127.0.0.1 7001
+[18740] 22 May 22:07:24.312 # +switch-master mymaster 127.0.0.1 7001 127.0.0.1 7002
+[18740] 22 May 22:07:24.313 * +slave slave 127.0.0.1:7003 127.0.0.1 7003 @ mymaster 127.0.0.1 7002
+[18740] 22 May 22:07:24.317 * +slave slave 127.0.0.1:7001 127.0.0.1 7001 @ mymaster 127.0.0.1 7002
+[18740] 22 May 22:07:29.328 # +sdown slave 127.0.0.1:7001 127.0.0.1 7001 @ mymaster 127.0.0.1 7002
+[18740] 22 May 22:15:13.023 # -sdown slave 127.0.0.1:7001 127.0.0.1 7001 @ mymaster 127.0.0.1 7002
+[18740] 22 May 22:15:22.995 * +convert-to-slave slave 127.0.0.1:7001 127.0.0.1 7001 @ mymaster 127.0.0.1 7002
+
+```
+
+
+
+
+
+## windows哨兵模式启动脚本
+
+```sh
+start "redis-7001" redis-server.exe redis1/redis.conf
+start "redis-7002" redis-server.exe redis2/redis.conf
+start "redis-7003" redis-server.exe redis3/redis.conf
+timeout /nobreak /t 3
+start "redis-sentinel-7501" redis-server.exe sentinel1/sentinel.conf --sentinel
+start "redis-sentinel-7502" redis-server.exe sentinel2/sentinel.conf --sentinel
+start "redis-sentinel-7503" redis-server.exe sentinel3/sentinel.conf --sentinel
+```
 
