@@ -1,4 +1,4 @@
-# --redis学习笔记
+# --redis学习笔记--
 
 
 
@@ -3920,6 +3920,2073 @@ OK
 
 
 ## windows分片集群启动脚本
+
+### 多窗口模式
+
+在根目录下创建一个bat文件，名字为“分片集群.bat”，
+
+复制如下命令到文件里
+
+```sh
+start "redis-master1-7201" redis-server.exe ./master1/redis.conf
+start "redis-master2-7202" redis-server.exe ./master2/redis.conf
+start "redis-master3-7203" redis-server.exe ./master3/redis.conf
+start "redis-slave1-7301" redis-server.exe ./slave1/redis.conf
+start "redis-slave2-7302" redis-server.exe ./slave2/redis.conf
+start "redis-slave3-7303" redis-server.exe ./slave3/redis.conf
+start "redis-slave4-7304" redis-server.exe ./slave4/redis.conf
+start "redis-slave5-7305" redis-server.exe ./slave5/redis.conf
+start "redis-slave6-7306" redis-server.exe ./slave6/redis.conf
+timeout /nobreak /t 3
+redis-cli --cluster create --cluster-replicas 2 127.0.0.1:7201 127.0.0.1:7202 127.0.0.1:7203 127.0.0.1:7301 127.0.0.1:7302 127.0.0.1:7303 127.0.0.1:7304 127.0.0.1:7305 127.0.0.1:7306
+pause
+```
+
+启动后关闭集群并关闭所有窗口：
+
+在根目录下创建一个“关闭所有分片集群节点.bat”文件
+
+复制如下命令到文件里：
+
+```sh
+redis-cli -p 7201 shutdown
+redis-cli -p 7202 shutdown
+redis-cli -p 7203 shutdown
+redis-cli -p 7301 shutdown
+redis-cli -p 7302 shutdown
+redis-cli -p 7303 shutdown
+redis-cli -p 7304 shutdown
+redis-cli -p 7305 shutdown
+redis-cli -p 7306 shutdown
+pause
+```
+
+
+
+注意：不要直接关闭窗口，应该按ctrl+c或者shutdown命令来关闭窗口，否则下一次启动时会出现问题！！！
+
+出现问题的解决方案：
+
+在根目录下创建“删除分片集群nodes文件.bat”文件，
+
+复制如下命令到文件里：
+
+```sh
+cd master1
+del nodes.conf
+cd ..
+cd master2
+del nodes.conf
+cd ..
+cd master3
+del nodes.conf
+cd ..
+cd slave1
+del nodes.conf
+cd ..
+cd slave2
+del nodes.conf
+cd ..
+cd slave3
+del nodes.conf
+cd ..
+cd slave4
+del nodes.conf
+cd ..
+cd slave5
+del nodes.conf
+cd ..
+cd slave6
+del nodes.conf
+cd ..
+pause
+```
+
+以后出现问题可以运行此文件修复。
+
+如果还是没有解决问题：
+
+在根目录下创建"修复分片集群.bat"文件，
+
+复制如下命令到文件里：
+
+```sh
+cd master1
+del nodes.conf
+del dump.rdb
+cd ..
+cd master2
+del nodes.conf
+del dump.rdb
+cd ..
+cd master3
+del nodes.conf
+del dump.rdb
+cd ..
+cd slave1
+del nodes.conf
+del dump.rdb
+cd ..
+cd slave2
+del nodes.conf
+del dump.rdb
+cd ..
+cd slave3
+del nodes.conf
+del dump.rdb
+cd ..
+cd slave4
+del nodes.conf
+del dump.rdb
+cd ..
+cd slave5
+del nodes.conf
+del dump.rdb
+cd ..
+cd slave6
+del nodes.conf
+del dump.rdb
+cd ..
+start "redis-master1-7201" redis-server.exe ./master1/redis.conf
+start "redis-master2-7202" redis-server.exe ./master2/redis.conf
+start "redis-master3-7203" redis-server.exe ./master3/redis.conf
+start "redis-slave1-7301" redis-server.exe ./slave1/redis.conf
+start "redis-slave2-7302" redis-server.exe ./slave2/redis.conf
+start "redis-slave3-7303" redis-server.exe ./slave3/redis.conf
+start "redis-slave4-7304" redis-server.exe ./slave4/redis.conf
+start "redis-slave5-7305" redis-server.exe ./slave5/redis.conf
+start "redis-slave6-7306" redis-server.exe ./slave6/redis.conf
+redis-cli --cluster fix 127.0.0.1 7201
+redis-cli --cluster fix 127.0.0.1 7202
+redis-cli --cluster fix 127.0.0.1 7203
+redis-cli --cluster fix 127.0.0.1 7301
+redis-cli --cluster fix 127.0.0.1 7302
+redis-cli --cluster fix 127.0.0.1 7303
+redis-cli --cluster fix 127.0.0.1 7304
+redis-cli --cluster fix 127.0.0.1 7305
+redis-cli --cluster fix 127.0.0.1 7306
+redis-cli -p 7201 shutdown
+redis-cli -p 7202 shutdown
+redis-cli -p 7203 shutdown
+redis-cli -p 7301 shutdown
+redis-cli -p 7302 shutdown
+redis-cli -p 7303 shutdown
+redis-cli -p 7304 shutdown
+redis-cli -p 7305 shutdown
+redis-cli -p 7306 shutdown
+pause
+```
+
+以后出现问题可以运行此文件修复。
+
+注意：运行此文件会删除数据！！！谨慎使用。
+
+
+
+### 单窗口模式
+
+在根目录下创建"修复分片集群-单窗口.bat"文件，
+
+复制如下命令到文件里：
+
+```sh
+start /b "redis-master1-7201" redis-server.exe ./master1/redis.conf
+start /b "redis-master2-7202" redis-server.exe ./master2/redis.conf
+start /b "redis-master3-7203" redis-server.exe ./master3/redis.conf
+start /b "redis-slave1-7301" redis-server.exe ./slave1/redis.conf
+start /b "redis-slave2-7302" redis-server.exe ./slave2/redis.conf
+start /b "redis-slave3-7303" redis-server.exe ./slave3/redis.conf
+start /b "redis-slave4-7304" redis-server.exe ./slave4/redis.conf
+start /b "redis-slave5-7305" redis-server.exe ./slave5/redis.conf
+start /b "redis-slave6-7306" redis-server.exe ./slave6/redis.conf
+timeout /nobreak /t 3
+redis-cli --cluster create --cluster-replicas 2 127.0.0.1:7201 127.0.0.1:7202 127.0.0.1:7203 127.0.0.1:7301 127.0.0.1:7302 127.0.0.1:7303 127.0.0.1:7304 127.0.0.1:7305 127.0.0.1:7306
+pause
+```
+
+注意：会出现显示问题，并且不好查看日志，好处就是只有一个窗口，不要直接关闭窗口！不然下次启动时会出现问题，应该使用命令关闭节点。
+
+
+
+
+
+## 散列插槽
+
+### 原理
+
+Redis会把每一个master节点映射到0~16383共16384个插槽（hash slot）上，查看集群信息时就能看到
+
+数据key不是与节点绑定，而是与插槽绑定。redis会根据key的有效部分计算插槽值，分两种情况：
+
+- key中包含"{}"，且“{}”中至少包含1个字符，“{}”中的部分是有效部分
+- key中不包含“{}”，整个key都是有效部分
+
+
+
+Redis如何判断某个key应该在哪个实例？
+
+- 将16384个插槽分配到不同的实例
+- 根据key的有效部分计算哈希值，对16384取余
+- 余数作为插槽，寻找插槽所在实例即可
+
+如何将同一类数据固定的保存在同一个Redis实例？
+
+- 这一类数据使用相同的有效部分，例如key都以{typeId}为前缀
+
+
+
+
+
+## 集群伸缩
+
+redis-cli --cluster提供了很多操作集群的命令，可以通过以下命令查看
+
+```sh
+redis-cli --cluster help
+```
+
+
+
+结果：
+
+```sh
+C:\Users\mao>redis-cli --cluster help
+Cluster Manager Commands:
+  create         host1:port1 ... hostN:portN
+                 --cluster-replicas <arg>
+  check          host:port
+                 --cluster-search-multiple-owners
+  info           host:port
+  fix            host:port
+                 --cluster-search-multiple-owners
+  reshard        host:port
+                 --cluster-from <arg>
+                 --cluster-to <arg>
+                 --cluster-slots <arg>
+                 --cluster-yes
+                 --cluster-timeout <arg>
+                 --cluster-pipeline <arg>
+                 --cluster-replace
+  rebalance      host:port
+                 --cluster-weight <node1=w1...nodeN=wN>
+                 --cluster-use-empty-masters
+                 --cluster-timeout <arg>
+                 --cluster-simulate
+                 --cluster-pipeline <arg>
+                 --cluster-threshold <arg>
+                 --cluster-replace
+  add-node       new_host:new_port existing_host:existing_port
+                 --cluster-slave
+                 --cluster-master-id <arg>
+  del-node       host:port node_id
+  call           host:port command arg arg .. arg
+  set-timeout    host:port milliseconds
+  import         host:port
+                 --cluster-from <arg>
+                 --cluster-copy
+                 --cluster-replace
+  help
+
+For check, fix, reshard, del-node, set-timeout you can specify the host and port of any working node in the cluster.
+
+
+```
+
+
+
+向集群中添加一个新的master节点，并向其中存储 num = 10
+
+- 启动一个新的redis实例，端口为7204
+- 添加7004到之前的集群，并作为一个master节点
+- 给7004节点分配插槽，使得num这个key可以存储到7204实例
+
+
+
+这里需要两个新的功能：
+
+- 添加一个节点到集群中
+- 将部分插槽分配到新插槽
+
+
+
+### 1. 创建新的redis实例
+
+创建文件夹，拷贝redis.conf文件，修改配置文件。
+
+修改后的配置文件如下：
+
+```sh
+port 7204
+# 开启集群功能
+cluster-enabled yes
+# 集群的配置文件名称，不需要我们创建，由redis自己维护
+# cluster-config-file ./master4/nodes.conf
+# 节点心跳失败的超时时间
+cluster-node-timeout 5000
+# 持久化文件存放目录
+dir ./master4
+# 绑定地址
+bind 127.0.0.1
+# 让redis后台运行
+daemonize no
+# 注册的实例ip
+replica-announce-ip 127.0.0.1
+# 保护模式
+protected-mode no
+# 数据库数量
+databases 1
+# 日志
+# logfile ./master4/run.log
+
+
+
+tcp-backlog 511
+timeout 0
+tcp-keepalive 300
+loglevel notice
+always-show-logo yes
+save 900 1
+save 300 10
+save 60 10000
+stop-writes-on-bgsave-error yes
+rdbcompression yes
+rdbchecksum yes
+dbfilename "dump.rdb"
+replica-serve-stale-data yes
+replica-read-only yes
+repl-diskless-sync no
+repl-diskless-sync-delay 5
+repl-disable-tcp-nodelay no
+replica-priority 100
+lazyfree-lazy-eviction no
+lazyfree-lazy-expire no
+lazyfree-lazy-server-del no
+replica-lazy-flush no
+appendonly no
+appendfilename "appendonly.aof"
+appendfsync everysec
+no-appendfsync-on-rewrite no
+auto-aof-rewrite-percentage 100
+auto-aof-rewrite-min-size 64mb
+aof-load-truncated yes
+aof-use-rdb-preamble yes
+lua-time-limit 5000
+slowlog-max-len 128
+latency-monitor-threshold 0
+notify-keyspace-events ""
+list-max-ziplist-size -2
+list-compress-depth 0
+set-max-intset-entries 512
+zset-max-ziplist-entries 128
+zset-max-ziplist-value 64
+hll-sparse-max-bytes 3000
+stream-node-max-bytes 4096
+stream-node-max-entries 100
+activerehashing yes
+hz 10
+dynamic-hz yes
+rdb-save-incremental-fsync yes
+```
+
+### 2. 启动
+
+```sh
+redis-server.exe ./master4/redis.conf
+```
+
+结果：
+
+```sh
+PS C:\Program Files\redis> redis-server.exe ./master4/redis.conf
+[12592] 24 May 12:48:53.544 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+[12592] 24 May 12:48:53.544 # Redis version=5.0.14.1, bits=64, commit=ec77f72d, modified=0, pid=12592, just started
+[12592] 24 May 12:48:53.544 # Configuration loaded
+[12592] 24 May 12:48:53.548 * No cluster configuration found, I'm 50681a213aaf688b7ee2ca2eabdb1f7805d96a30
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 5.0.14.1 (ec77f72d/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in cluster mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 7204
+ |    `-._   `._    /     _.-'    |     PID: 12592
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           http://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+[12592] 24 May 12:48:53.551 # Server initialized
+[12592] 24 May 12:48:53.551 * Ready to accept connections
+
+```
+
+
+
+### 3. 添加新节点到redis
+
+使用命令：
+
+```sh
+redis-cli --cluster add-node  127.0.0.1:7204 127.0.0.1:7201
+```
+
+结果：
+
+```sh
+C:\Users\mao>redis-cli --cluster add-node  127.0.0.1:7204 127.0.0.1:7201
+>>> Adding node 127.0.0.1:7204 to cluster 127.0.0.1:7201
+>>> Performing Cluster Check (using node 127.0.0.1:7201)
+M: 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28 127.0.0.1:7201
+   slots:[0-5460] (5461 slots) master
+   2 additional replica(s)
+S: 71a87d8f7ce0b10e7c61114c99289cd0a0d41f91 127.0.0.1:7305
+   slots: (0 slots) slave
+   replicates 13af4d8bb562a66329e0fd65541a4605e7bfa98d
+M: 13af4d8bb562a66329e0fd65541a4605e7bfa98d 127.0.0.1:7202
+   slots:[5461-10922] (5462 slots) master
+   2 additional replica(s)
+S: 5955890e8df91cc20f3020458c6d58b8215bed61 127.0.0.1:7306
+   slots: (0 slots) slave
+   replicates 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+M: 24a6fef5a04e19bf6834cd4ef641bd52ccc064a9 127.0.0.1:7203
+   slots:[10923-16383] (5461 slots) master
+   2 additional replica(s)
+S: 14b9098a24045ecb42fd788f3892f923e602a4e8 127.0.0.1:7304
+   slots: (0 slots) slave
+   replicates 13af4d8bb562a66329e0fd65541a4605e7bfa98d
+S: 12a4f64792af5b93e88998c7847df7cf62ac8e72 127.0.0.1:7303
+   slots: (0 slots) slave
+   replicates 24a6fef5a04e19bf6834cd4ef641bd52ccc064a9
+S: c6a7614ce24d78b8b01646e0fe0f0dd9a1d11a8f 127.0.0.1:7302
+   slots: (0 slots) slave
+   replicates 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+S: 4529e008f12228a2e8f9935529f0be2e3f3915eb 127.0.0.1:7301
+   slots: (0 slots) slave
+   replicates 24a6fef5a04e19bf6834cd4ef641bd52ccc064a9
+[OK] All nodes agree about slots configuration.
+>>> Check for open slots...
+>>> Check slots coverage...
+[OK] All 16384 slots covered.
+>>> Send CLUSTER MEET to node 127.0.0.1:7204 to make it join the cluster.
+[OK] New node added correctly.
+
+C:\Users\mao>
+```
+
+
+
+### 4. 查看集群状态
+
+命令：
+
+```sh
+redis-cli -p 7201 cluster nodes
+```
+
+结果：
+
+```sh
+C:\Users\mao>redis-cli -p 7201 cluster nodes
+71a87d8f7ce0b10e7c61114c99289cd0a0d41f91 127.0.0.1:7305@17305 slave 13af4d8bb562a66329e0fd65541a4605e7bfa98d 0 1653368001000 8 connected
+13af4d8bb562a66329e0fd65541a4605e7bfa98d 127.0.0.1:7202@17202 master - 0 1653368001840 2 connected 5461-10922
+5955890e8df91cc20f3020458c6d58b8215bed61 127.0.0.1:7306@17306 slave 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28 0 1653368001728 9 connected
+13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28 127.0.0.1:7201@17201 myself,master - 0 1653368000000 1 connected 0-5460
+50681a213aaf688b7ee2ca2eabdb1f7805d96a30 127.0.0.1:7204@17204 master - 0 1653368002510 0 connected
+24a6fef5a04e19bf6834cd4ef641bd52ccc064a9 127.0.0.1:7203@17203 master - 0 1653368001506 3 connected 10923-16383
+14b9098a24045ecb42fd788f3892f923e602a4e8 127.0.0.1:7304@17304 slave 13af4d8bb562a66329e0fd65541a4605e7bfa98d 0 1653368002510 7 connected
+12a4f64792af5b93e88998c7847df7cf62ac8e72 127.0.0.1:7303@17303 slave 24a6fef5a04e19bf6834cd4ef641bd52ccc064a9 0 1653368002175 6 connected
+c6a7614ce24d78b8b01646e0fe0f0dd9a1d11a8f 127.0.0.1:7302@17302 slave 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28 0 1653368002510 5 connected
+4529e008f12228a2e8f9935529f0be2e3f3915eb 127.0.0.1:7301@17301 slave 24a6fef5a04e19bf6834cd4ef641bd52ccc064a9 0 1653368001063 4 connected
+```
+
+
+
+### 5. 转移插槽
+
+我们要将num存储到7004节点，因此需要先看看num的插槽是多少
+
+```sh
+set num 1
+```
+
+结果：
+
+```sh
+C:\Users\mao>redis-cli -p 7201
+127.0.0.1:7201> ping
+PONG
+127.0.0.1:7201> get num
+(nil)
+127.0.0.1:7201> set num
+(error) ERR wrong number of arguments for 'set' command
+127.0.0.1:7201> exit
+
+C:\Users\mao>redis-cli -p 7201
+127.0.0.1:7201> ping
+PONG
+127.0.0.1:7201> set num 1
+OK
+127.0.0.1:7201> exit
+
+C:\Users\mao>redis-cli -p 7203
+127.0.0.1:7203> get num
+(error) MOVED 2765 127.0.0.1:7201
+127.0.0.1:7203>
+```
+
+num的插槽为2765
+
+我们可以将0~3000的插槽从7201转移到7204
+
+```sh
+redis-cli --cluster reshard 127.0.0.1 7201
+```
+
+结果：
+
+```sh
+C:\Users\mao>redis-cli --cluster reshard 127.0.0.1 7201
+>>> Performing Cluster Check (using node 127.0.0.1:7201)
+M: 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28 127.0.0.1:7201
+   slots:[0-5460] (5461 slots) master
+   2 additional replica(s)
+S: 71a87d8f7ce0b10e7c61114c99289cd0a0d41f91 127.0.0.1:7305
+   slots: (0 slots) slave
+   replicates 13af4d8bb562a66329e0fd65541a4605e7bfa98d
+M: 13af4d8bb562a66329e0fd65541a4605e7bfa98d 127.0.0.1:7202
+   slots:[5461-10922] (5462 slots) master
+   2 additional replica(s)
+S: 5955890e8df91cc20f3020458c6d58b8215bed61 127.0.0.1:7306
+   slots: (0 slots) slave
+   replicates 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+M: 50681a213aaf688b7ee2ca2eabdb1f7805d96a30 127.0.0.1:7204
+   slots: (0 slots) master
+M: 24a6fef5a04e19bf6834cd4ef641bd52ccc064a9 127.0.0.1:7203
+   slots:[10923-16383] (5461 slots) master
+   2 additional replica(s)
+S: 14b9098a24045ecb42fd788f3892f923e602a4e8 127.0.0.1:7304
+   slots: (0 slots) slave
+   replicates 13af4d8bb562a66329e0fd65541a4605e7bfa98d
+S: 12a4f64792af5b93e88998c7847df7cf62ac8e72 127.0.0.1:7303
+   slots: (0 slots) slave
+   replicates 24a6fef5a04e19bf6834cd4ef641bd52ccc064a9
+S: c6a7614ce24d78b8b01646e0fe0f0dd9a1d11a8f 127.0.0.1:7302
+   slots: (0 slots) slave
+   replicates 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+S: 4529e008f12228a2e8f9935529f0be2e3f3915eb 127.0.0.1:7301
+   slots: (0 slots) slave
+   replicates 24a6fef5a04e19bf6834cd4ef641bd52ccc064a9
+[OK] All nodes agree about slots configuration.
+>>> Check for open slots...
+>>> Check slots coverage...
+[OK] All 16384 slots covered.
+How many slots do you want to move (from 1 to 16384)?
+```
+
+
+
+输入3000
+
+结果：
+
+```sh
+C:\Users\mao>redis-cli --cluster reshard 127.0.0.1 7201
+>>> Performing Cluster Check (using node 127.0.0.1:7201)
+M: 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28 127.0.0.1:7201
+   slots:[0-5460] (5461 slots) master
+   2 additional replica(s)
+S: 71a87d8f7ce0b10e7c61114c99289cd0a0d41f91 127.0.0.1:7305
+   slots: (0 slots) slave
+   replicates 13af4d8bb562a66329e0fd65541a4605e7bfa98d
+M: 13af4d8bb562a66329e0fd65541a4605e7bfa98d 127.0.0.1:7202
+   slots:[5461-10922] (5462 slots) master
+   2 additional replica(s)
+S: 5955890e8df91cc20f3020458c6d58b8215bed61 127.0.0.1:7306
+   slots: (0 slots) slave
+   replicates 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+M: 50681a213aaf688b7ee2ca2eabdb1f7805d96a30 127.0.0.1:7204
+   slots: (0 slots) master
+M: 24a6fef5a04e19bf6834cd4ef641bd52ccc064a9 127.0.0.1:7203
+   slots:[10923-16383] (5461 slots) master
+   2 additional replica(s)
+S: 14b9098a24045ecb42fd788f3892f923e602a4e8 127.0.0.1:7304
+   slots: (0 slots) slave
+   replicates 13af4d8bb562a66329e0fd65541a4605e7bfa98d
+S: 12a4f64792af5b93e88998c7847df7cf62ac8e72 127.0.0.1:7303
+   slots: (0 slots) slave
+   replicates 24a6fef5a04e19bf6834cd4ef641bd52ccc064a9
+S: c6a7614ce24d78b8b01646e0fe0f0dd9a1d11a8f 127.0.0.1:7302
+   slots: (0 slots) slave
+   replicates 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+S: 4529e008f12228a2e8f9935529f0be2e3f3915eb 127.0.0.1:7301
+   slots: (0 slots) slave
+   replicates 24a6fef5a04e19bf6834cd4ef641bd52ccc064a9
+[OK] All nodes agree about slots configuration.
+>>> Check for open slots...
+>>> Check slots coverage...
+[OK] All 16384 slots covered.
+How many slots do you want to move (from 1 to 16384)? 3000
+What is the receiving node ID?
+```
+
+
+
+输入7204节点的ID ，当前7204的ID为50681a213aaf688b7ee2ca2eabdb1f7805d96a30，所以输入50681a213aaf688b7ee2ca2eabdb1f7805d96a30
+
+结果：
+
+```sh
+C:\Users\mao>redis-cli --cluster reshard 127.0.0.1 7201
+>>> Performing Cluster Check (using node 127.0.0.1:7201)
+M: 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28 127.0.0.1:7201
+   slots:[0-5460] (5461 slots) master
+   2 additional replica(s)
+S: 71a87d8f7ce0b10e7c61114c99289cd0a0d41f91 127.0.0.1:7305
+   slots: (0 slots) slave
+   replicates 13af4d8bb562a66329e0fd65541a4605e7bfa98d
+M: 13af4d8bb562a66329e0fd65541a4605e7bfa98d 127.0.0.1:7202
+   slots:[5461-10922] (5462 slots) master
+   2 additional replica(s)
+S: 5955890e8df91cc20f3020458c6d58b8215bed61 127.0.0.1:7306
+   slots: (0 slots) slave
+   replicates 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+M: 50681a213aaf688b7ee2ca2eabdb1f7805d96a30 127.0.0.1:7204
+   slots: (0 slots) master
+M: 24a6fef5a04e19bf6834cd4ef641bd52ccc064a9 127.0.0.1:7203
+   slots:[10923-16383] (5461 slots) master
+   2 additional replica(s)
+S: 14b9098a24045ecb42fd788f3892f923e602a4e8 127.0.0.1:7304
+   slots: (0 slots) slave
+   replicates 13af4d8bb562a66329e0fd65541a4605e7bfa98d
+S: 12a4f64792af5b93e88998c7847df7cf62ac8e72 127.0.0.1:7303
+   slots: (0 slots) slave
+   replicates 24a6fef5a04e19bf6834cd4ef641bd52ccc064a9
+S: c6a7614ce24d78b8b01646e0fe0f0dd9a1d11a8f 127.0.0.1:7302
+   slots: (0 slots) slave
+   replicates 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+S: 4529e008f12228a2e8f9935529f0be2e3f3915eb 127.0.0.1:7301
+   slots: (0 slots) slave
+   replicates 24a6fef5a04e19bf6834cd4ef641bd52ccc064a9
+[OK] All nodes agree about slots configuration.
+>>> Check for open slots...
+>>> Check slots coverage...
+[OK] All 16384 slots covered.
+How many slots do you want to move (from 1 to 16384)? 3000
+What is the receiving node ID? 50681a213aaf688b7ee2ca2eabdb1f7805d96a30
+Please enter all the source node IDs.
+  Type 'all' to use all the nodes as source nodes for the hash slots.
+  Type 'done' once you entered all the source nodes IDs.
+Source node #1:
+```
+
+这里询问，你的插槽是从哪里移动过来的？
+
+- all：代表全部，也就是三个节点各转移一部分
+- 具体的id：目标节点的id
+- done：没有了
+
+这里我们要从7201获取，因此填写7201的id。当前7201的ID为13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28，所以输入13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+
+```sh
+C:\Users\mao>redis-cli --cluster reshard 127.0.0.1 7201
+>>> Performing Cluster Check (using node 127.0.0.1:7201)
+M: 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28 127.0.0.1:7201
+   slots:[0-5460] (5461 slots) master
+   2 additional replica(s)
+S: 71a87d8f7ce0b10e7c61114c99289cd0a0d41f91 127.0.0.1:7305
+   slots: (0 slots) slave
+   replicates 13af4d8bb562a66329e0fd65541a4605e7bfa98d
+M: 13af4d8bb562a66329e0fd65541a4605e7bfa98d 127.0.0.1:7202
+   slots:[5461-10922] (5462 slots) master
+   2 additional replica(s)
+S: 5955890e8df91cc20f3020458c6d58b8215bed61 127.0.0.1:7306
+   slots: (0 slots) slave
+   replicates 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+M: 50681a213aaf688b7ee2ca2eabdb1f7805d96a30 127.0.0.1:7204
+   slots: (0 slots) master
+M: 24a6fef5a04e19bf6834cd4ef641bd52ccc064a9 127.0.0.1:7203
+   slots:[10923-16383] (5461 slots) master
+   2 additional replica(s)
+S: 14b9098a24045ecb42fd788f3892f923e602a4e8 127.0.0.1:7304
+   slots: (0 slots) slave
+   replicates 13af4d8bb562a66329e0fd65541a4605e7bfa98d
+S: 12a4f64792af5b93e88998c7847df7cf62ac8e72 127.0.0.1:7303
+   slots: (0 slots) slave
+   replicates 24a6fef5a04e19bf6834cd4ef641bd52ccc064a9
+S: c6a7614ce24d78b8b01646e0fe0f0dd9a1d11a8f 127.0.0.1:7302
+   slots: (0 slots) slave
+   replicates 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+S: 4529e008f12228a2e8f9935529f0be2e3f3915eb 127.0.0.1:7301
+   slots: (0 slots) slave
+   replicates 24a6fef5a04e19bf6834cd4ef641bd52ccc064a9
+[OK] All nodes agree about slots configuration.
+>>> Check for open slots...
+>>> Check slots coverage...
+[OK] All 16384 slots covered.
+How many slots do you want to move (from 1 to 16384)? 3000
+What is the receiving node ID? 50681a213aaf688b7ee2ca2eabdb1f7805d96a30
+Please enter all the source node IDs.
+  Type 'all' to use all the nodes as source nodes for the hash slots.
+  Type 'done' once you entered all the source nodes IDs.
+Source node #1: 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+Source node #2:
+```
+
+
+
+填完后，输入done
+
+结果：
+
+```sh
+C:\Users\mao>redis-cli --cluster reshard 127.0.0.1 7201
+>>> Performing Cluster Check (using node 127.0.0.1:7201)
+M: 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28 127.0.0.1:7201
+   slots:[0-5460] (5461 slots) master
+   2 additional replica(s)
+S: 71a87d8f7ce0b10e7c61114c99289cd0a0d41f91 127.0.0.1:7305
+   slots: (0 slots) slave
+   replicates 13af4d8bb562a66329e0fd65541a4605e7bfa98d
+M: 13af4d8bb562a66329e0fd65541a4605e7bfa98d 127.0.0.1:7202
+   slots:[5461-10922] (5462 slots) master
+   2 additional replica(s)
+S: 5955890e8df91cc20f3020458c6d58b8215bed61 127.0.0.1:7306
+   slots: (0 slots) slave
+   replicates 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+M: 50681a213aaf688b7ee2ca2eabdb1f7805d96a30 127.0.0.1:7204
+   slots: (0 slots) master
+M: 24a6fef5a04e19bf6834cd4ef641bd52ccc064a9 127.0.0.1:7203
+   slots:[10923-16383] (5461 slots) master
+   2 additional replica(s)
+S: 14b9098a24045ecb42fd788f3892f923e602a4e8 127.0.0.1:7304
+   slots: (0 slots) slave
+   replicates 13af4d8bb562a66329e0fd65541a4605e7bfa98d
+S: 12a4f64792af5b93e88998c7847df7cf62ac8e72 127.0.0.1:7303
+   slots: (0 slots) slave
+   replicates 24a6fef5a04e19bf6834cd4ef641bd52ccc064a9
+S: c6a7614ce24d78b8b01646e0fe0f0dd9a1d11a8f 127.0.0.1:7302
+   slots: (0 slots) slave
+   replicates 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+S: 4529e008f12228a2e8f9935529f0be2e3f3915eb 127.0.0.1:7301
+   slots: (0 slots) slave
+   replicates 24a6fef5a04e19bf6834cd4ef641bd52ccc064a9
+[OK] All nodes agree about slots configuration.
+>>> Check for open slots...
+>>> Check slots coverage...
+[OK] All 16384 slots covered.
+How many slots do you want to move (from 1 to 16384)? 3000
+What is the receiving node ID? 50681a213aaf688b7ee2ca2eabdb1f7805d96a30
+Please enter all the source node IDs.
+  Type 'all' to use all the nodes as source nodes for the hash slots.
+  Type 'done' once you entered all the source nodes IDs.
+Source node #1: 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+Source node #2: done
+
+Ready to move 3000 slots.
+  Source nodes:
+    M: 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28 127.0.0.1:7201
+       slots:[0-5460] (5461 slots) master
+       2 additional replica(s)
+  Destination node:
+    M: 50681a213aaf688b7ee2ca2eabdb1f7805d96a30 127.0.0.1:7204
+       slots: (0 slots) master
+  Resharding plan:
+    Moving slot 0 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 1 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 3 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 4 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 5 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 6 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 7 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 8 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 9 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 10 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 11 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 12 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 13 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 14 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 15 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 16 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 17 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 18 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 19 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 20 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 21 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 22 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 23 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 24 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 25 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 26 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 27 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 28 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 29 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 30 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 31 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 32 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 33 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 34 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 35 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 36 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 37 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 38 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 39 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 40 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 41 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 42 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 43 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 44 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 45 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 46 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 47 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 48 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 49 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 50 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 51 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 52 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 53 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 54 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 55 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 56 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 57 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 58 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 59 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 60 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 61 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 62 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 63 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 64 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 65 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 66 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 67 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 68 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 69 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 70 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 71 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 72 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 73 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 74 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 75 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 76 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 77 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 78 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 79 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 80 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 81 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 82 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 83 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 84 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 85 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 86 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 87 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 88 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 89 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 90 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 91 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 92 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 93 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 94 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 95 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 96 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 97 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 98 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 99 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 100 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 101 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 102 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 103 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 104 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 105 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 106 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 107 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 108 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 109 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 110 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 111 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 112 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 113 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 114 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 115 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 116 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 117 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 118 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 119 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 120 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 121 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 122 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 123 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 124 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 125 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 126 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 127 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 128 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 129 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 130 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 131 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 132 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 133 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 134 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 135 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 136 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 137 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 138 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 139 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 140 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 141 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 142 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 143 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 144 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 145 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 146 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 147 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 148 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 149 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 150 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 151 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 152 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 153 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 154 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 155 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 156 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 157 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 158 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 159 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 160 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 161 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 162 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 163 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 164 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 165 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 166 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 167 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 168 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 169 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 170 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 171 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 172 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 173 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 174 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 175 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 176 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 177 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 178 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 179 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 180 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 181 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 182 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 183 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 184 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 185 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 186 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 187 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 188 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 189 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 190 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 191 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 192 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 193 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 194 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 195 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 196 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 197 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 198 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 199 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 200 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 201 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 202 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 203 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 204 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 205 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 206 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 207 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 208 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 209 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 210 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 211 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 212 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 213 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 214 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 215 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 216 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 217 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 218 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 219 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 220 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 221 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 222 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 223 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 224 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 225 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 226 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 227 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 228 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 229 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 230 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 231 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    ···
+    ···
+    ···
+    Moving slot 2811 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2812 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2813 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2814 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2815 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2816 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2817 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2818 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2819 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2820 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2821 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2822 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2823 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2824 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2825 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2826 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2827 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2828 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2829 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2830 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2831 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2832 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2833 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2834 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2835 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2836 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2837 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2838 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2839 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2840 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2841 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2842 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2843 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2844 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2845 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2846 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2847 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2848 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2849 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2850 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2851 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2852 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2853 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2854 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2855 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2856 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2857 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2858 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2859 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2860 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2861 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2862 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2863 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2864 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2865 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2866 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2867 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2868 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2869 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2870 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2871 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2872 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2873 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2874 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2875 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2876 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2877 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2878 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2879 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2880 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2881 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2882 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2883 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2884 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2885 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2886 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2887 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2888 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2889 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2890 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2891 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2892 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2893 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2894 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2895 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2896 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2897 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2898 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2899 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2900 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2901 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2902 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2903 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2904 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2905 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2906 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2907 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2908 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2909 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2910 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2911 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2912 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2913 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2914 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2915 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2916 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2917 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2918 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2919 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2920 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2921 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2922 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2923 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2924 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2925 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2926 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2927 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2928 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2929 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2930 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2931 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2932 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2933 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2934 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2935 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2936 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2937 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2938 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2939 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2940 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2941 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2942 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2943 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2944 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2945 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2946 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2947 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2948 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2949 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2950 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2951 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2952 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2953 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2954 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2955 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2956 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2957 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2958 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2959 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2960 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2961 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2962 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2963 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2964 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2965 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2966 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2967 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2968 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2969 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2970 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2971 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2972 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2973 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2974 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2975 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2976 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2977 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2978 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2979 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2980 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2981 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2982 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2983 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2984 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2985 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2986 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2987 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2988 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2989 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2990 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2991 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2992 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2993 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2994 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2995 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2996 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2997 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2998 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2999 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+Do you want to proceed with the proposed reshard plan (yes/no)?
+```
+
+输入yes：
+
+结果：
+
+```sh
+C:\Users\mao>redis-cli --cluster reshard 127.0.0.1 7201
+>>> Performing Cluster Check (using node 127.0.0.1:7201)
+M: 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28 127.0.0.1:7201
+   slots:[0-5460] (5461 slots) master
+   2 additional replica(s)
+S: 71a87d8f7ce0b10e7c61114c99289cd0a0d41f91 127.0.0.1:7305
+   slots: (0 slots) slave
+   replicates 13af4d8bb562a66329e0fd65541a4605e7bfa98d
+M: 13af4d8bb562a66329e0fd65541a4605e7bfa98d 127.0.0.1:7202
+   slots:[5461-10922] (5462 slots) master
+   2 additional replica(s)
+S: 5955890e8df91cc20f3020458c6d58b8215bed61 127.0.0.1:7306
+   slots: (0 slots) slave
+   replicates 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+M: 50681a213aaf688b7ee2ca2eabdb1f7805d96a30 127.0.0.1:7204
+   slots: (0 slots) master
+M: 24a6fef5a04e19bf6834cd4ef641bd52ccc064a9 127.0.0.1:7203
+   slots:[10923-16383] (5461 slots) master
+   2 additional replica(s)
+S: 14b9098a24045ecb42fd788f3892f923e602a4e8 127.0.0.1:7304
+   slots: (0 slots) slave
+   replicates 13af4d8bb562a66329e0fd65541a4605e7bfa98d
+S: 12a4f64792af5b93e88998c7847df7cf62ac8e72 127.0.0.1:7303
+   slots: (0 slots) slave
+   replicates 24a6fef5a04e19bf6834cd4ef641bd52ccc064a9
+S: c6a7614ce24d78b8b01646e0fe0f0dd9a1d11a8f 127.0.0.1:7302
+   slots: (0 slots) slave
+   replicates 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+S: 4529e008f12228a2e8f9935529f0be2e3f3915eb 127.0.0.1:7301
+   slots: (0 slots) slave
+   replicates 24a6fef5a04e19bf6834cd4ef641bd52ccc064a9
+[OK] All nodes agree about slots configuration.
+>>> Check for open slots...
+>>> Check slots coverage...
+[OK] All 16384 slots covered.
+How many slots do you want to move (from 1 to 16384)? 3000
+What is the receiving node ID? 50681a213aaf688b7ee2ca2eabdb1f7805d96a30
+Please enter all the source node IDs.
+  Type 'all' to use all the nodes as source nodes for the hash slots.
+  Type 'done' once you entered all the source nodes IDs.
+Source node #1: 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+Source node #2: done
+
+Ready to move 3000 slots.
+  Source nodes:
+    M: 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28 127.0.0.1:7201
+       slots:[0-5460] (5461 slots) master
+       2 additional replica(s)
+  Destination node:
+    M: 50681a213aaf688b7ee2ca2eabdb1f7805d96a30 127.0.0.1:7204
+       slots: (0 slots) master
+  Resharding plan:
+    Moving slot 0 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 1 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 3 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 4 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 5 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 6 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 7 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 8 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 9 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 10 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 11 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 12 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 13 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 14 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 15 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 16 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 17 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 18 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 19 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 20 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 21 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 22 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 23 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 24 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 25 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 26 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 27 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 28 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 29 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 30 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 31 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 32 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 33 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 34 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 35 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 36 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 37 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 38 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 39 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 40 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 41 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 42 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 43 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 44 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 45 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 46 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 47 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 48 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 49 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 50 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 51 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 52 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 53 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 54 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 55 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 56 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 57 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 58 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 59 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 60 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 61 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 62 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 63 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 64 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 65 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 66 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 67 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 68 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 69 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 70 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 71 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 72 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 73 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 74 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 75 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 76 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 77 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 78 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 79 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 80 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 81 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 82 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 83 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 84 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 85 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 86 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 87 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 88 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 89 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 90 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 91 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 92 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 93 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 94 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 95 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 96 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 97 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 98 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 99 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 100 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 101 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 102 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 103 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 104 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 105 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 106 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 107 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 108 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 109 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 110 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 111 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 112 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 113 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 114 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 115 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 116 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 117 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 118 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 119 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 120 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 121 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 122 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 123 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 124 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 125 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 126 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 127 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 128 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 129 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 130 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 131 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 132 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 133 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 134 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 135 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 136 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 137 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 138 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 139 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 140 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 141 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 142 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 143 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 144 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 145 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 146 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 147 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 148 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 149 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 150 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 151 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 152 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 153 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 154 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 155 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 156 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 157 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 158 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 159 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 160 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 161 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 162 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 163 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 164 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 165 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 166 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 167 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 168 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 169 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 170 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 171 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 172 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 173 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 174 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 175 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 176 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 177 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 178 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 179 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 180 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 181 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 182 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 183 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 184 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 185 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 186 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 187 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 188 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 189 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 190 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 191 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 192 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 193 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 194 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 195 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 196 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 197 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 198 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 199 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 200 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 201 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 202 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 203 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 204 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 205 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 206 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 207 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 208 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 209 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 210 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 211 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 212 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 213 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 214 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 215 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 216 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 217 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 218 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 219 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 220 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 221 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 222 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 223 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 224 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 225 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 226 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 227 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 228 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 229 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 230 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 231 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 232 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 233 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 234 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 235 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 236 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 237 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 238 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 239 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 240 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    ···
+    ···
+    ···
+    Moving slot 2884 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2885 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2886 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2887 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2888 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2889 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2890 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2891 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2892 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2893 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2894 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2895 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2896 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2897 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2898 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2899 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2900 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2901 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2902 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2903 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2904 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2905 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2906 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2907 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2908 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2909 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2910 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2911 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2912 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2913 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2914 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2915 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2916 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2917 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2918 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2919 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2920 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2921 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2922 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2923 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2924 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2925 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2926 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2927 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2928 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2929 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2930 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2931 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2932 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2933 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2934 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2935 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2936 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2937 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2938 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2939 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2940 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2941 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2942 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2943 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2944 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2945 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2946 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2947 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2948 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2949 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2950 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2951 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2952 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2953 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2954 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2955 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2956 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2957 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2958 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2959 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2960 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2961 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2962 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2963 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2964 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2965 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2966 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2967 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2968 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2969 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2970 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2971 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2972 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2973 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2974 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2975 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2976 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2977 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2978 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2979 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2980 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2981 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2982 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2983 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2984 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2985 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2986 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2987 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2988 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2989 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2990 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2991 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2992 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2993 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2994 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2995 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2996 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2997 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2998 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+    Moving slot 2999 from 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28
+Do you want to proceed with the proposed reshard plan (yes/no)? yes
+Moving slot 0 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 1 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 3 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 4 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 5 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 6 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 7 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 8 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 9 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 10 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 11 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 12 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 13 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 14 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 15 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 16 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 17 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 18 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 19 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 20 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 21 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 22 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 23 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 24 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 25 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 26 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 27 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 28 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 29 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 30 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 31 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 32 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 33 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 34 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 35 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 36 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 37 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 38 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 39 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 40 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 41 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 42 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 43 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 44 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 45 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 46 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 47 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 48 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 49 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 50 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 51 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 52 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 53 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 54 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 55 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 56 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 57 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 58 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 59 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 60 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 61 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 62 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 63 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 64 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 65 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 66 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 67 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 68 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 69 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 70 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 71 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 72 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 73 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 74 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 75 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 76 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 77 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 78 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 79 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 80 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 81 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 82 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 83 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 84 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 85 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 86 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 87 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 88 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 89 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 90 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 91 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 92 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 93 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 94 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 95 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 96 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 97 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 98 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 99 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 100 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 101 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 102 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 103 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 104 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 105 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 106 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 107 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 108 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 109 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 110 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 111 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 112 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 113 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 114 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 115 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 116 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 117 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 118 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 119 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 120 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 121 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 122 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 123 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 124 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 125 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 126 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 127 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 128 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 129 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 130 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 131 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 132 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 133 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 134 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 135 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 136 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 137 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 138 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 139 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 140 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 141 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 142 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 143 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 144 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 145 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 146 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 147 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 148 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 149 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 150 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 151 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 152 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 153 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 154 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 155 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 156 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 157 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 158 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 159 from 127.0.0.1:7201 to 127.0.0.1:7204:
+···
+···
+···
+Moving slot 2893 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2894 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2895 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2896 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2897 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2898 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2899 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2900 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2901 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2902 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2903 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2904 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2905 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2906 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2907 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2908 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2909 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2910 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2911 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2912 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2913 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2914 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2915 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2916 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2917 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2918 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2919 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2920 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2921 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2922 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2923 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2924 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2925 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2926 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2927 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2928 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2929 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2930 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2931 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2932 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2933 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2934 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2935 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2936 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2937 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2938 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2939 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2940 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2941 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2942 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2943 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2944 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2945 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2946 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2947 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2948 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2949 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2950 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2951 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2952 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2953 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2954 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2955 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2956 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2957 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2958 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2959 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2960 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2961 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2962 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2963 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2964 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2965 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2966 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2967 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2968 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2969 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2970 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2971 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2972 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2973 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2974 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2975 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2976 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2977 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2978 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2979 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2980 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2981 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2982 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2983 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2984 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2985 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2986 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2987 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2988 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2989 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2990 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2991 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2992 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2993 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2994 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2995 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2996 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2997 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2998 from 127.0.0.1:7201 to 127.0.0.1:7204:
+Moving slot 2999 from 127.0.0.1:7201 to 127.0.0.1:7204:
+```
+
+
+
+完成
+
+### 6. 再次查看集群状态
+
+```sh
+redis-cli -p 7201 cluster nodes
+```
+
+结果：
+
+```sh
+C:\Users\mao>redis-cli -p 7201 cluster nodes
+71a87d8f7ce0b10e7c61114c99289cd0a0d41f91 127.0.0.1:7305@17305 slave 13af4d8bb562a66329e0fd65541a4605e7bfa98d 0 1653369074000 8 connected
+13af4d8bb562a66329e0fd65541a4605e7bfa98d 127.0.0.1:7202@17202 master - 0 1653369075867 2 connected 5461-10922
+5955890e8df91cc20f3020458c6d58b8215bed61 127.0.0.1:7306@17306 slave 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28 0 1653369075000 9 connected
+13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28 127.0.0.1:7201@17201 myself,master - 0 1653369074000 1 connected 3000-5460
+50681a213aaf688b7ee2ca2eabdb1f7805d96a30 127.0.0.1:7204@17204 master - 0 1653369075000 10 connected 0-2999
+24a6fef5a04e19bf6834cd4ef641bd52ccc064a9 127.0.0.1:7203@17203 master - 0 1653369075000 3 connected 10923-16383
+14b9098a24045ecb42fd788f3892f923e602a4e8 127.0.0.1:7304@17304 slave 13af4d8bb562a66329e0fd65541a4605e7bfa98d 0 1653369075643 7 connected
+12a4f64792af5b93e88998c7847df7cf62ac8e72 127.0.0.1:7303@17303 slave 50681a213aaf688b7ee2ca2eabdb1f7805d96a30 0 1653369075532 10 connected
+c6a7614ce24d78b8b01646e0fe0f0dd9a1d11a8f 127.0.0.1:7302@17302 slave 13a2efaa5c6dd6df9cb8431c8922b6cde0ea9e28 0 1653369075532 5 connected
+4529e008f12228a2e8f9935529f0be2e3f3915eb 127.0.0.1:7301@17301 slave 24a6fef5a04e19bf6834cd4ef641bd52ccc064a9 0 1653369075000 4 connected
+```
+
+
+
+
+
+## 故障转移
+
+### 自动故障转移
+
+当集群中有一个master宕机会发生什么呢？
+
+直接停止一个redis实例，例如7202：
+
+```sh
+redis-cli -p 7202 shutdown
+```
+
+
+
+1. 首先是该实例与其它实例失去连接
+2. 然后是疑似宕机
+3. 最后是确定下线，自动提升一个slave为新的master
+4. 当7102再次启动，就会变为一个slave节点了
+
+
+
+### 手动故障转移
+
+利用cluster failover命令可以手动让集群中的某个master宕机，切换到执行cluster failover命令的这个slave节点，实现无感知的数据迁移。其流程如下：
+
+* slave节点告诉master节点拒绝任何客户端请求
+* master返回当前的数据offset给slave
+* slave等待数据offset与master一致
+* master和slave开始故障转移
+* slave标记自己为master，广播故障转移的结果
+* master收到广播，开始处理 客户端读请求
+
+
+
+这种failover命令可以指定三种模式：
+
+- 缺省：默认的流程，如上1~6歩
+- force：省略了对offset的一致性校验
+- takeover：直接执行第5歩，忽略数据一致性、忽略master状态和其它master的意见
+
+
+
+在7002这个slave节点执行手动故障转移，重新夺回master地位
+
+步骤如下：
+
+1）利用redis-cli连接7102这个节点
+
+2）执行cluster failover命令
+
+
+
+## java代码操作redis分片集群
+
+### 引入依赖
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-redis</artifactId>
+</dependency>
+```
+
+
+
+### 配置
+
+在配置文件application.yml中指定redis的相关信息
+
+```yaml
+spring:
+  redis:
+    cluster:
+      nodes:
+        - 127.0.0.1:7201
+        - 127.0.0.1:7202
+        - 127.0.0.1:7203
+        - 127.0.0.1:7301
+        - 127.0.0.1:7302
+        - 127.0.0.1:7303
+        - 127.0.0.1:7304
+        - 127.0.0.1:7305
+        - 127.0.0.1:7306
+```
+
+### 配置读写分离
+
+```java
+@Configuration
+public class RedisConfig
+{
+
+    @Bean
+    public LettuceClientConfigurationBuilderCustomizer lettuceClientConfigurationBuilderCustomizer()
+    {
+        
+        return clientConfigurationBuilder -> clientConfigurationBuilder.readFrom(ReadFrom.REPLICA_PREFERRED);
+    }
+}
+```
+
+读写策略：
+
+- MASTER：从主节点读取
+- MASTER_PREFERRED：优先从master节点读取，master不可用才读取replica
+- REPLICA：从slave（replica）节点读取
+- REPLICA _PREFERRED：优先从slave（replica）节点读取，所有的slave都不可用才读取master
+
+
+
+### RedisTestController
+
+```java
+@RestController
+public class RedisTestController
+{
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
+
+    @GetMapping("set/{key}/{value}")
+    public Boolean set(@PathVariable String key, @PathVariable String value)
+    {
+        stringRedisTemplate.opsForValue().set(key, value);
+        return true;
+    }
+
+    @GetMapping("get/{key}")
+    public String get(@PathVariable String key)
+    {
+        return stringRedisTemplate.opsForValue().get(key);
+    }
+}
+
+```
+
+
+
+### 结果
+
+向redis里存一个数：
+
+http://localhost:8080/set/a/1267
+
+控制台结果：
 
 ```sh
 ```
