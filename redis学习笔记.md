@@ -6571,6 +6571,74 @@ BigKey通常以Key的大小和Key中成员的数量来综合判定
 
 
 
+大key扫描：
+
+```java
+/**
+     * 大key扫描
+     */
+    @Test
+    void testScan()
+    {
+        int maxLen = 0;
+        long len = 0;
+
+        String cursor = "0";
+        do
+        {
+            // 扫描并获取一部分key
+            ScanResult<String> result = jedis.scan(cursor);
+            // 记录cursor
+            cursor = result.getCursor();
+            List<String> list = result.getResult();
+            if (list == null || list.isEmpty())
+            {
+                break;
+            }
+            // 遍历
+            for (String key : list)
+            {
+                // 判断key的类型
+                String type = jedis.type(key);
+                switch (type)
+                {
+                    case "string":
+                        len = jedis.strlen(key);
+                        maxLen = STR_MAX_LEN;
+                        break;
+                    case "hash":
+                        len = jedis.hlen(key);
+                        maxLen = HASH_MAX_LEN;
+                        break;
+                    case "list":
+                        len = jedis.llen(key);
+                        maxLen = HASH_MAX_LEN;
+                        break;
+                    case "set":
+                        len = jedis.scard(key);
+                        maxLen = HASH_MAX_LEN;
+                        break;
+                    case "zset":
+                        len = jedis.zcard(key);
+                        maxLen = HASH_MAX_LEN;
+                        break;
+                    default:
+                        break;
+                }
+                if (len >= maxLen)
+                {
+                    System.out.printf("找到 big key : %s, 类型: %s, 长度或者大小: %d %n", key, type, len);
+                }
+            }
+        }
+        while (!cursor.equals("0"));
+    }
+```
+
+
+
+
+
 ## 恰当的数据类型
 
 比如存储一个User对象，我们有三种存储方式
@@ -6608,6 +6676,296 @@ hash：
 
 
 解决方案：拆分为小的hash，将 id / 100 作为key， 将id % 100 作为field，这样每100个元素为一个Hash
+
+
+
+
+
+源码：
+
+```java
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import redis.clients.jedis.Jedis;
+import redis.clients.jedis.Pipeline;
+import redis.clients.jedis.resps.ScanResult;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Project name(项目名称)：Redis_bigKey_and_bigKey_scan
+ * Package(包名): PACKAGE_NAME
+ * Class(类名): JedisTest
+ * Author(作者）: mao
+ * Author QQ：1296193245
+ * GitHub：https://github.com/maomao124/
+ * Date(创建日期)： 2022/6/25
+ * Time(创建时间)： 11:34
+ * Version(版本): 1.0
+ * Description(描述)： 无
+ */
+
+
+public class JedisTest
+{
+    private Jedis jedis;
+
+    /**
+     * Sets up.
+     */
+    @BeforeEach
+    void setUp()
+    {
+        // 1.建立连接
+        jedis = new Jedis("127.0.0.1", 6379);
+        // 2.设置密码
+        jedis.auth("123456");
+        // 3.选择库
+        jedis.select(0);
+    }
+
+    /**
+     * Ping.
+     */
+    @Test
+    void ping()
+    {
+        String ping = jedis.ping();
+        System.out.println(ping);
+    }
+
+    /**
+     * Test hash.
+     */
+    @Test
+    void testHash()
+    {
+        // 插入hash数据
+        jedis.hset("user:1", "name", "Jack");
+        jedis.hset("user:1", "age", "21");
+
+        // 获取
+        Map<String, String> map = jedis.hgetAll("user:1");
+        System.out.println(map);
+    }
+
+
+    /**
+     * The constant STR_MAX_LEN.
+     */
+    final static int STR_MAX_LEN = 5 * 1024;
+    /**
+     * The constant HASH_MAX_LEN.
+     */
+    final static int HASH_MAX_LEN = 500;
+
+    /**
+     * 大key扫描
+     */
+    @Test
+    void testScan()
+    {
+        int maxLen = 0;
+        long len = 0;
+
+        String cursor = "0";
+        do
+        {
+            // 扫描并获取一部分key
+            ScanResult<String> result = jedis.scan(cursor);
+            // 记录cursor
+            cursor = result.getCursor();
+            List<String> list = result.getResult();
+            if (list == null || list.isEmpty())
+            {
+                break;
+            }
+            // 遍历
+            for (String key : list)
+            {
+                // 判断key的类型
+                String type = jedis.type(key);
+                switch (type)
+                {
+                    case "string":
+                        len = jedis.strlen(key);
+                        maxLen = STR_MAX_LEN;
+                        break;
+                    case "hash":
+                        len = jedis.hlen(key);
+                        maxLen = HASH_MAX_LEN;
+                        break;
+                    case "list":
+                        len = jedis.llen(key);
+                        maxLen = HASH_MAX_LEN;
+                        break;
+                    case "set":
+                        len = jedis.scard(key);
+                        maxLen = HASH_MAX_LEN;
+                        break;
+                    case "zset":
+                        len = jedis.zcard(key);
+                        maxLen = HASH_MAX_LEN;
+                        break;
+                    default:
+                        break;
+                }
+                if (len >= maxLen)
+                {
+                    System.out.printf("找到 big key : %s, 类型: %s, 长度或者大小: %d %n", key, type, len);
+                }
+            }
+        }
+        while (!cursor.equals("0"));
+    }
+
+    /**
+     * Test set big key.
+     */
+    @Test
+    void testSetBigKey()
+    {
+        Map<String, String> map = new HashMap<>();
+        for (int i = 1; i <= 1000; i++)
+        {
+            map.put("hello_" + i, "world!");
+        }
+        jedis.hmset("m2", map);
+    }
+
+    /**
+     * Test big hash.
+     */
+    @Test
+    void testBigHash()
+    {
+        Map<String, String> map = new HashMap<>();
+        for (int i = 1; i <= 100000; i++)
+        {
+            map.put("key_" + i, "value_" + i);
+        }
+        jedis.hmset("test:big:hash", map);
+    }
+
+    /**
+     * Test big string.
+     */
+    @Test
+    void testBigString()
+    {
+        for (int i = 1; i <= 100000; i++)
+        {
+            jedis.set("test:str:key_" + i, "value_" + i);
+        }
+    }
+
+    /**
+     * Test big string delete.
+     */
+    @Test
+    void testBigStringDelete()
+    {
+        for (int i = 1; i <= 100000; i++)
+        {
+            jedis.del("test:str:key_" + i);
+        }
+    }
+
+    /**
+     * Test small hash.
+     */
+    @Test
+    void testSmallHash()
+    {
+        int hashSize = 100;
+        Map<String, String> map = new HashMap<>(hashSize);
+        for (int i = 1; i <= 100000; i++)
+        {
+            int k = (i - 1) / hashSize;
+            int v = i % hashSize;
+            map.put("key_" + v, "value_" + v);
+            if (v == 0)
+            {
+                jedis.hmset("test:small:hash_" + k, map);
+            }
+        }
+    }
+
+    /**
+     * Test for.
+     */
+    @Test
+    void testFor()
+    {
+        for (int i = 1; i <= 100000; i++)
+        {
+            jedis.set("test:key_" + i, "value_" + i);
+        }
+    }
+
+    /**
+     * Test mxx.
+     */
+    @Test
+    void testMxx()
+    {
+        String[] arr = new String[2000];
+        int j;
+        long b = System.currentTimeMillis();
+        for (int i = 1; i <= 100000; i++)
+        {
+            j = (i % 1000) << 1;
+            arr[j] = "test:key_" + i;
+            arr[j + 1] = "value_" + i;
+            if (j == 0)
+            {
+                jedis.mset(arr);
+            }
+        }
+        long e = System.currentTimeMillis();
+        System.out.println("time: " + (e - b));
+    }
+
+    /**
+     * Test pipeline.
+     */
+    @Test
+    void testPipeline()
+    {
+        // 创建管道
+        Pipeline pipeline = jedis.pipelined();
+        long b = System.currentTimeMillis();
+        for (int i = 1; i <= 100000; i++)
+        {
+            // 放入命令到管道
+            pipeline.set("test:key_" + i, "value_" + i);
+            if (i % 1000 == 0)
+            {
+                // 每放入1000条命令，批量执行
+                pipeline.sync();
+            }
+        }
+        long e = System.currentTimeMillis();
+        System.out.println("time: " + (e - b));
+    }
+
+    /**
+     * Tear down.
+     */
+    @AfterEach
+    void tearDown()
+    {
+        if (jedis != null)
+        {
+            jedis.close();
+        }
+    }
+}
+
+```
 
 
 
@@ -6674,6 +7032,120 @@ void testPipeline() {
 
 
 
+
+部分源码：
+
+```java
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import redis.clients.jedis.HostAndPort;
+import redis.clients.jedis.JedisCluster;
+import redis.clients.jedis.JedisPoolConfig;
+import util.ClusterSlotHashUtil;
+
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+/**
+ * Project name(项目名称)：Redis_jedis_cluster_mset
+ * Package(包名): PACKAGE_NAME
+ * Class(类名): JedisClusterTest
+ * Author(作者）: mao
+ * Author QQ：1296193245
+ * GitHub：https://github.com/maomao124/
+ * Date(创建日期)： 2022/6/25
+ * Time(创建时间)： 11:17
+ * Version(版本): 1.0
+ * Description(描述)： 无
+ */
+
+public class JedisClusterTest
+{
+    private JedisCluster jedisCluster;
+
+    @BeforeEach
+    void setUp()
+    {
+        // 配置连接池
+        /*JedisPoolConfig poolConfig = new JedisPoolConfig();
+        poolConfig.setMaxTotal(8);
+        poolConfig.setMaxIdle(8);
+        poolConfig.setMinIdle(0);
+        poolConfig.setMaxWaitMillis(1000);*/
+        HashSet<HostAndPort> nodes = new HashSet<>();
+        nodes.add(new HostAndPort("127.0.0.1", 7201));
+        nodes.add(new HostAndPort("127.0.0.1", 7202));
+        nodes.add(new HostAndPort("127.0.0.1", 7203));
+        nodes.add(new HostAndPort("127.0.0.1", 7301));
+        nodes.add(new HostAndPort("127.0.0.1", 7302));
+        nodes.add(new HostAndPort("127.0.0.1", 7303));
+        nodes.add(new HostAndPort("127.0.0.1", 7304));
+        nodes.add(new HostAndPort("127.0.0.1", 7305));
+        nodes.add(new HostAndPort("127.0.0.1", 7306));
+        jedisCluster = new JedisCluster(nodes);
+    }
+
+    /**
+     * 添加失败，插槽不一样
+     * Keys must belong to same hashslot
+     */
+    @Test
+    void testMSet()
+    {
+        jedisCluster.mset("name", "Jack", "age", "21", "sex", "male");
+    }
+
+    /**
+     * 串行slot
+     * m次网络耗时 + N次命令 耗时 m = key的slot个数
+     */
+    @Test
+    void testMSet2()
+    {
+        Map<String, String> map = new HashMap<>(3);
+        map.put("name", "Jack");
+        map.put("age", "21");
+        map.put("sex", "Male");
+
+        Map<Integer, List<Map.Entry<String, String>>> result = map.entrySet()
+                .stream()
+                .collect(Collectors.groupingBy(
+                        entry -> ClusterSlotHashUtil.calculateSlot(entry.getKey()))
+                );
+        for (List<Map.Entry<String, String>> list : result.values())
+        {
+            String[] arr = new String[list.size() * 2];
+            int j = 0;
+            for (int i = 0; i < list.size(); i++)
+            {
+                j = i << 2;
+                Map.Entry<String, String> e = list.get(0);
+                arr[j] = e.getKey();
+                arr[j + 1] = e.getValue();
+            }
+            jedisCluster.mset(arr);
+        }
+    }
+
+    @AfterEach
+    void tearDown()
+    {
+        if (jedisCluster != null)
+        {
+            jedisCluster.close();
+        }
+    }
+}
+
+```
+
+
+
+项目地址：https://github.com/maomao124/Redis_jedis_cluster_mset.git
 
 
 
@@ -6816,4 +7288,168 @@ ssh –i  id_rsa root@ip地址
 
 
 ## 内存配置
+
+当Redis内存不足时，可能导致Key频繁被删除、响应时间变长、QPS不稳定等问题。当内存使用率达到90%以上时就 需要我们警惕，并快速定位到内存占用的原因
+
+* 数据内存：是Redis最主要的部分，存储Redis的键值信息。主要问题是BigKey问题、内存碎片问题
+* 进程内存：Redis主进程本身运⾏肯定需要占⽤内存，如代码、常量池等等；这部分内存⼤约⼏兆，在⼤多数⽣产环境中与Redis数据占⽤的内存相⽐可以忽略
+* 缓冲区内存：一般包括客户端缓冲区、AOF缓冲区、复制缓冲区等。客户端缓冲区又包括输入缓冲区和输出缓冲区两种。这部分内存占用波动较大，不当使用BigKey，可能导致内存溢出
+
+
+
+Redis提供了一些命令，可以查看到Redis目前的内存分配状态：
+
+* info memory
+* memory xxx
+
+
+
+```sh
+127.0.0.1:6379> info memory
+# Memory
+used_memory:740120
+used_memory_human:722.77K
+used_memory_rss:699104
+used_memory_rss_human:682.72K
+used_memory_peak:740136
+used_memory_peak_human:722.79K
+used_memory_peak_perc:100.00%
+used_memory_overhead:712310
+used_memory_startup:660456
+used_memory_dataset:27810
+used_memory_dataset_perc:34.91%
+allocator_allocated:6650632
+allocator_active:394264576
+allocator_resident:562036736
+total_system_memory:0
+total_system_memory_human:0B
+used_memory_lua:37888
+used_memory_lua_human:37.00K
+used_memory_scripts:0
+used_memory_scripts_human:0B
+number_of_cached_scripts:0
+maxmemory:0
+maxmemory_human:0B
+maxmemory_policy:noeviction
+allocator_frag_ratio:59.28
+allocator_frag_bytes:387613944
+allocator_rss_ratio:1.43
+allocator_rss_bytes:167772160
+rss_overhead_ratio:0.00
+rss_overhead_bytes:-561337632
+mem_fragmentation_ratio:1.00
+mem_fragmentation_bytes:0
+mem_not_counted_for_evict:0
+mem_replication_backlog:0
+mem_clients_slaves:0
+mem_clients_normal:49950
+mem_aof_buffer:0
+mem_allocator:jemalloc-5.2.1-redis
+active_defrag_running:0
+lazyfree_pending_objects:0
+127.0.0.1:6379>
+```
+
+
+
+```sh
+127.0.0.1:6379> memory stats
+ 1) "peak.allocated"
+ 2) (integer) 740136
+ 3) "total.allocated"
+ 4) (integer) 740120
+ 5) "startup.allocated"
+ 6) (integer) 660456
+ 7) "replication.backlog"
+ 8) (integer) 0
+ 9) "clients.slaves"
+10) (integer) 0
+11) "clients.normal"
+12) (integer) 49950
+13) "aof.buffer"
+14) (integer) 0
+15) "lua.caches"
+16) (integer) 0
+17) "db.0"
+18) 1) "overhead.hashtable.main"
+    2) (integer) 1872
+    3) "overhead.hashtable.expires"
+    4) (integer) 32
+19) "overhead.total"
+20) (integer) 712310
+21) "keys.count"
+22) (integer) 34
+23) "keys.bytes-per-key"
+24) (integer) 2343
+25) "dataset.bytes"
+26) (integer) 27810
+27) "dataset.percentage"
+28) "34.90911865234375"
+29) "peak.percentage"
+30) "99.997840881347656"
+31) "allocator.allocated"
+32) (integer) 6697480
+33) "allocator.active"
+34) (integer) 427819008
+35) "allocator.resident"
+36) (integer) 574619648
+37) "allocator-fragmentation.ratio"
+38) "63.877609252929688"
+39) "allocator-fragmentation.bytes"
+40) (integer) 421121528
+41) "allocator-rss.ratio"
+42) "1.343137264251709"
+43) "allocator-rss.bytes"
+44) (integer) 146800640
+45) "rss-overhead.ratio"
+46) "0.0012166377855464816"
+47) "rss-overhead.bytes"
+48) (integer) -573920544
+49) "fragmentation"
+50) "1"
+51) "fragmentation.bytes"
+52) (integer) 0
+127.0.0.1:6379>
+```
+
+
+
+内存缓冲区配置：
+
+* 复制缓冲区：主从复制的repl_backlog_buf，如果太小可能导致频繁的全量复制，影响性能。通过repl-backlogsize来设置，默认1m
+* AOF缓冲区：AOF刷盘之前的缓存区域，AOF执行rewrite的缓冲区。无法设置容量上限
+* 客户端缓冲区：分为输入缓冲区和输出缓冲区，输入缓冲区最大1G且不能设置。输出缓冲区可以设置
+
+
+
+```sh
+client-output-buffer-limit <class> <hard limit> <soft limit> <soft seconds>
+```
+
+
+
+* class：客户端类型 
+  * normal：普通客户端 
+  * replica：主从复制客户端 
+  * pubsub：PubSub客户端
+* hard limit：缓冲区上限在超过limit后断开客户端
+* soft limit和soft seconds：缓冲区上限，在超过soft limit 并且持续了 soft seconds秒后断开客户端
+
+
+
+
+
+
+
+在Redis的默认配置中，如果发现任意一个插槽不可用，则整个集群都会停止对外服务
+
+为了保证高可用特性，这里建议将 cluster-require-full-coverage配置为false
+
+
+
+
+
+
+
+# Redis数据结构
 
