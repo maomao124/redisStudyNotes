@@ -7453,3 +7453,224 @@ client-output-buffer-limit <class> <hard limit> <soft limit> <soft seconds>
 
 # Redis数据结构
 
+## 动态字符串SDS
+
+我们都知道Redis中保存的Key是字符串，value往往是字符串或者字符串的集合。可见字符串是Redis中最常用的一种数据结构
+
+Redis没有直接使用C语言中的字符串，因为C语言字符串存在很多问题
+
+问题如下：
+
+* 获取字符串长度的需要通过运算
+* 非二进制安全
+* 不可修改
+
+
+
+Redis构建了一种新的字符串结构，称为简单动态字符串（Simple Dynamic String），简称SDS
+
+
+
+SDS是一个结构体，源码如下：
+
+```c
+struct __attribute__ ((__packed__)) sdshdr8 {
+    uint8_t len; /* buf已保存的字符串字节数，不包含结束标示*/
+    uint8_t alloc; /* buf申请的总的字节数，不包含结束标示*/
+    unsigned char flags; /* 不同SDS的头类型，用来控制SDS的头大小
+    char buf[];
+};
+```
+
+
+
+SDS头类型：
+
+```c
+#define SDS_TYPE_5  0
+#define SDS_TYPE_8  1
+#define SDS_TYPE_16 2
+#define SDS_TYPE_32 3
+#define SDS_TYPE_64 4
+```
+
+
+
+存储结构：
+
+len:4 -> alloc:4 -> flags:1 -> n -> a ->  m -> e -> \0
+
+
+
+动态扩容：
+
+申请新内存空间：
+
+* 如果新字符串小于1M，则新空间为扩展后字符串长度的两倍+1
+* 如果新字符串大于1M，则新空间为扩展后字符串长度+1M+1。称为内存预分配
+
+
+
+优点：
+
+* 获取字符串长度的时间复杂度为O(1)
+* 支持动态扩容
+* 减少内存分配次数
+* 二进制安全
+
+
+
+
+
+## IntSet
+
+IntSet是Redis中set集合的一种实现方式，基于整数数组来实现，并且具备长度可变、有序等特征
+
+
+
+数据结构：
+
+```c
+typedef struct intset 
+{
+    uint32_t encoding; /* 编码方式，支持存放16位、32位、64位整数*/
+    uint32_t length; /* 元素个数 */
+    int8_t contents[]; /* 整数数组，保存集合数据*/
+} intset;
+```
+
+
+
+encoding包含三种模式：
+
+```c
+/* Note that these encodings are ordered, so:
+ * INTSET_ENC_INT16 < INTSET_ENC_INT32 < INTSET_ENC_INT64. */
+#define INTSET_ENC_INT16 (sizeof(int16_t)) /* 2字节整数，范围类似java的short*/
+#define INTSET_ENC_INT32 (sizeof(int32_t)) /* 4字节整数，范围类似java的int */
+#define INTSET_ENC_INT64 (sizeof(int64_t)) /* 8字节整数，范围类似java的long */
+```
+
+
+
+
+
+为了方便查找，Redis会将intset中所有的整数按照升序依次保存在contents数组中
+
+
+
+结构：
+
+encoding:INTSET_ENC_INT16  ->  length:3  ->  5  ->  10  ->  20
+
+
+
+查找算法：startPtr + (sizeof(int16) * index)
+
+
+
+**IntSet升级：**
+
+假设有一个intset，元素为{5,10，20}，采用的编码是INTSET_ENC_INT16，则每个整数占2字节
+
+我们向该其中添加一个数字：50000，这个数字超出了int16_t的范围，intset会自动升级编码方式到合适的大小
+
+说流程如下：
+
+* 升级编码为INTSET_ENC_INT32, 每个整数占4字节，并按照新的编码方式及元素个数扩容数组
+* 倒序依次将数组中的元素拷贝到扩容后的正确位置
+* 将待添加的元素放入数组末尾
+* 最后，将inset的encoding属性改为INTSET_ENC_INT32，将length属性改为4
+
+
+
+encoding:INTSET_ENC_INT32  ->   length:4   ->   5   ->   10   ->   20   ->   50000
+
+
+
+新增源码：
+
+```c
+intset *intsetAdd(intset *is, int64_t value, uint8_t *success) 
+{
+    uint8_t valenc = _intsetValueEncoding(value);// 获取当前值编码
+    uint32_t pos; // 要插入的位置
+    if (success) *success = 1;
+    // 判断编码是不是超过了当前intset的编码
+    if (valenc > intrev32ifbe(is->encoding)) 
+    {
+        // 超出编码，需要升级
+        return intsetUpgradeAndAdd(is,value);
+    } 
+    else 
+    {
+        // 在当前intset中查找值与value一样的元素的角标pos
+        if (intsetSearch(is,value,&pos)) 
+        {
+            if (success) *success = 0; //如果找到了，则无需插入，直接结束并返回失败
+            return is;
+        }
+        // 数组扩容
+        is = intsetResize(is,intrev32ifbe(is->length)+1);
+        // 移动数组中pos之后的元素到pos+1，给新元素腾出空间
+        if (pos < intrev32ifbe(is->length)) intsetMoveTail(is,pos,pos+1);
+    }
+    // 插入新元素
+    _intsetSet(is,pos,value);
+    // 重置元素长度
+    is->length = intrev32ifbe(intrev32ifbe(is->length)+1);
+    return is;
+}
+```
+
+
+
+
+
+升级源码：
+
+```c
+static intset *intsetUpgradeAndAdd(intset *is, int64_t value) 
+{
+    // 获取当前intset编码
+    uint8_t curenc = intrev32ifbe(is->encoding);
+    // 获取新编码
+    uint8_t newenc = _intsetValueEncoding(value);
+    // 获取元素个数
+    int length = intrev32ifbe(is->length); 
+    // 判断新元素是大于0还是小于0 ，小于0插入队首、大于0插入队尾
+    int prepend = value < 0 ? 1 : 0;
+    // 重置编码为新编码
+    is->encoding = intrev32ifbe(newenc);
+    // 重置数组大小
+    is = intsetResize(is,intrev32ifbe(is->length)+1);
+    // 倒序遍历，逐个搬运元素到新的位置，_intsetGetEncoded按照旧编码方式查找旧元素
+    while(length--) // _intsetSet按照新编码方式插入新元素
+        _intsetSet(is,length+prepend,_intsetGetEncoded(is,length,curenc));
+    /* 插入新元素，prepend决定是队首还是队尾*/
+    if (prepend)
+        _intsetSet(is,0,value);
+    else
+        _intsetSet(is,intrev32ifbe(is->length),value);
+    // 修改数组长度
+    is->length = intrev32ifbe(intrev32ifbe(is->length)+1);
+    return is;
+}
+```
+
+
+
+
+
+Intset可以看做是特殊的整数数组，具备一些特点
+
+* Redis会确保Intset中的元素唯一、有序
+* 具备类型升级机制，可以节省内存空间
+* 底层采用二分查找方式来查询
+
+
+
+
+
+## Dict
+
