@@ -7674,3 +7674,196 @@ Intset可以看做是特殊的整数数组，具备一些特点
 
 ## Dict
 
+Dict由三部分组成，分别是：哈希表（DictHashTable）、哈希节点（DictEntry）、字典（Dict）
+
+
+
+dict是一个用于维护key和value映射关系的数据结构，与很多语言中的Map或dictionary类似。Redis的一个database中所有key到value的映射，就是使用一个dict来维护的。
+
+
+
+```c
+typedef struct dictht 
+{
+    // entry数组
+    // 数组中保存的是指向entry的指针
+    dictEntry **table; 
+    // 哈希表大小
+    unsigned long size;     
+    // 哈希表大小的掩码，总等于size - 1
+    unsigned long sizemask;     
+    // entry个数
+    unsigned long used; 
+} dictht;
+
+```
+
+
+
+```c
+typedef struct dictEntry 
+{
+    void *key; // 键
+    union 
+    {
+        void *val;
+        uint64_t u64;
+        int64_t s64;
+        double d;
+    } v; // 值
+    // 下一个Entry的指针
+    struct dictEntry *next; 
+} dictEntry;
+
+```
+
+
+
+```c
+typedef struct dict 
+{
+    dictType *type; // dict类型，内置不同的hash函数
+    void *privdata;     // 私有数据，在做特殊hash运算时用
+    dictht ht[2]; // 一个Dict包含两个哈希表，其中一个是当前数据，另一个一般是空，rehash时使用
+    long rehashidx;   // rehash的进度，-1表示未进行
+    int16_t pauserehash; // rehash是否暂停，1则暂停，0则继续
+} dict;
+
+```
+
+
+
+当我们向Dict添加键值对时，Redis首先根据key计算出hash值（h），然后利用 h & sizemask来计算元素应该存储到数组中的哪个索引位置
+
+我们存储k1=v1，假设k1的哈希值h =1，则1&3 =1，因此k1=v1要存储到数组角标1位置。
+
+
+
+Dict中的HashTable就是数组结合单向链表的实现，当集合中元素较多时，必然导致哈希冲突增多，链表过长，则查询效率会大大降低。
+
+Dict在每次新增键值对时都会检查负载因子（LoadFactor = used/size） ，满足以下两种情况时会触发哈希表扩容：
+
+* 哈希表的 LoadFactor >= 1，并且服务器没有执行 BGSAVE 或者 BGREWRITEAOF 等后台进程
+* u哈希表的 LoadFactor > 5 
+
+
+
+```c
+static int _dictExpandIfNeeded(dict *d)
+{
+    // 如果正在rehash，则返回ok
+    if (dictIsRehashing(d)) return DICT_OK;    // 如果哈希表为空，则初始化哈希表为默认大小：4
+    if (d->ht[0].size == 0) return dictExpand(d, DICT_HT_INITIAL_SIZE);
+    // 当负载因子（used/size）达到1以上，并且当前没有进行bgrewrite等子进程操作
+    // 或者负载因子超过5，则进行 dictExpand ，也就是扩容
+    if (d->ht[0].used >= d->ht[0].size &&
+        (dict_can_resize || d->ht[0].used/d->ht[0].size > dict_force_resize_ratio)
+        {
+        // 扩容大小为used + 1，底层会对扩容大小做判断，实际上找的是第一个大于等于 used+1 的 2^n
+        return dictExpand(d, d->ht[0].used + 1);
+    }
+    return DICT_OK;
+}
+```
+
+
+
+
+
+Dict除了扩容以外，每次删除元素时，也会对负载因子做检查，当LoadFactor < 0.1 时，会做哈希表收缩：
+
+
+
+```c
+if (dictDelete((dict*)o->ptr, field) == C_OK) 
+{
+    deleted = 1;
+    // 删除成功后，检查是否需要重置Dict大小，如果需要则调用dictResize重置    /* Always check if the dictionary needs a resize after a delete. */
+    if (htNeedsResize(o->ptr)) dictResize(o->ptr);
+}
+
+```
+
+
+
+```c
+// server.c 文件
+int htNeedsResize(dict *dict) 
+{
+    long long size, used;
+    // 哈希表大小
+    size = dictSlots(dict);
+    // entry数量
+    used = dictSize(dict);
+    // size > 4（哈希表初识大小）并且 负载因子低于0.1
+    return (size > DICT_HT_INITIAL_SIZE && (used*100/size < HASHTABLE_MIN_FILL));
+}
+
+```
+
+
+
+```c
+int dictResize(dict *d)
+{
+    unsigned long minimal;
+    // 如果正在做bgsave或bgrewriteof或rehash，则返回错误
+    if (!dict_can_resize || dictIsRehashing(d)) 
+        return DICT_ERR;
+    // 获取used，也就是entry个数
+    minimal = d->ht[0].used;
+    // 如果used小于4，则重置为4
+    if (minimal < DICT_HT_INITIAL_SIZE)
+        minimal = DICT_HT_INITIAL_SIZE;
+    // 重置大小为minimal，其实是第一个大于等于minimal的2^n
+    return dictExpand(d, minimal);
+}
+
+```
+
+
+
+
+
+一个dict由如下若干项组成：
+
+* 一个指向dictType结构的指针（type）。它通过自定义的方式使得dict的key和value能够存储任何类型的数据。
+* 一个私有数据指针（privdata）。由调用者在创建dict的时候传进来。
+* 两个哈希表（ht[2]）。只有在重哈希的过程中，ht[0]和ht[1]才都有效。而在平常情况下，只有ht[0]有效，ht[1]里面没有任何数据。
+* 当前重哈希索引（rehashidx）。如果rehashidx = -1，表示当前没有在重哈希过程中；否则，表示当前正在进行重哈希，且它的值记录了当前重哈希进行到哪一步了。
+
+
+
+
+
+
+
+**rehash**：
+
+不管是扩容还是收缩，必定会创建新的哈希表，导致哈希表的size和sizemask变化，而key的查询与sizemask有关。因此必须对哈希表中的每一个key重新计算索引，插入新的哈希表，这个过程称为rehash。
+
+
+
+* 计算新hash表的realeSize，值取决于当前要做的是扩容还是收缩：
+  * 如果是扩容，则新size为第一个大于等于dict.ht[0].used + 1的2^n
+  * u如果是收缩，则新size为第一个大于等于dict.ht[0].used的2^n （不得小于4）
+
+* 按照新的realeSize申请内存空间，创建dictht，并赋值给dict.ht[1]
+* 设置dict.rehashidx = 0，标示开始rehash
+* 每次执行新增、查询、修改、删除操作时，都检查一下dict.rehashidx是否大于-1，如果是则将dict.ht[0].table[rehashidx]的entry链表rehash到dict.ht[1]，并且将rehashidx++。直至dict.ht[0]的所有数据都rehash到dict.ht[1]
+* 将dict.ht[1]赋值给dict.ht[0]，给dict.ht[1]初始化为空哈希表，释放原来的dict.ht[0]的内存
+* 将rehashidx赋值为-1，代表rehash结束
+* 在rehash过程中，新增操作，则直接写入ht[1]，查询、修改和删除则会在dict.ht[0]和dict.ht[1]依次查找并执行。这样可以确保ht[0]的数据只减不增，随着rehash最终为空
+
+
+
+Dict的rehash并不是一次性完成的。如果Dict中包含数百万的entry，要在一次rehash完成，极有可能导致主线程阻塞。因此Dict的rehash是分多次、渐进式的完成，因此称为渐进式rehash
+
+
+
+
+
+## ZipList
+
+
+
