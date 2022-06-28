@@ -8517,3 +8517,311 @@ ziplist本身没有排序功能，而且没有键值对的概念，因此需要�
 
 ## Hash
 
+Hash底层采用的编码与Zset也基本一致，只需要把排序有关的SkipList去掉即可
+
+
+
+* Hash结构默认采用ZipList编码，用以节省内存。 ZipList中相邻的两个entry 分别保存field和value
+* 当数据量较大时，Hash结构会转为HT编码，也就是Dict，触发条件有两个
+  * ZipList中的元素数量超过了hash-max-ziplist-entries（默认512）
+  * ZipList中的任意entry大小超过了hash-max-ziplist-value（默认64字节）
+
+
+
+```c
+void hsetCommand(client *c) 
+{// hset user1 name Jack age 21
+    int i, created = 0;
+    robj *o; // 略 ...    // 判断hash的key是否存在，不存在则创建一个新的，默认采用ZipList编码
+    if ((o = hashTypeLookupWriteOrCreate(c,c->argv[1])) == NULL) 
+        return;
+    // 判断是否需要把ZipList转为Dict
+    hashTypeTryConversion(o,c->argv,2,c->argc-1);
+    // 循环遍历每一对field和value，并执行hset命令
+    for (i = 2; i < c->argc; i += 2)
+        created += !hashTypeSet(o,c->argv[i]->ptr,c->argv[i+1]->ptr,HASH_SET_COPY);    // 略 ...
+}
+```
+
+
+
+```c
+robj *hashTypeLookupWriteOrCreate(client *c, robj *key) 
+{
+    // 查找key
+    robj *o = lookupKeyWrite(c->db,key);
+    if (checkType(c,o,OBJ_HASH)) return NULL;
+    // 不存在，则创建新的
+    if (o == NULL) 
+    {
+        o = createHashObject();
+        dbAdd(c->db,key,o);
+    }
+    return o;
+}
+```
+
+
+
+```c
+robj *createHashObject(void) 
+{
+    // 默认采用ZipList编码，申请ZipList内存空间
+    unsigned char *zl = ziplistNew();
+    robj *o = createObject(OBJ_HASH, zl);
+    // 设置编码
+    o->encoding = OBJ_ENCODING_ZIPLIST;
+    return o;
+}
+
+```
+
+
+
+```c
+void hashTypeTryConversion(robj *o, robj **argv, int start, int end) 
+{
+    int i;
+    size_t sum = 0;
+    // 本来就不是ZipList编码，什么都不用做了
+    if (o->encoding != OBJ_ENCODING_ZIPLIST) 
+        return;
+    // 依次遍历命令中的field、value参数
+    for (i = start; i <= end; i++) 
+    {
+        if (!sdsEncodedObject(argv[i]))
+            continue;
+        size_t len = sdslen(argv[i]->ptr);
+        // 如果field或value超过hash_max_ziplist_value，则转为HT
+        if (len > server.hash_max_ziplist_value) 
+        {
+            hashTypeConvert(o, OBJ_ENCODING_HT);
+            return;
+        }
+        sum += len;
+    }// ziplist大小超过1G，也转为HT
+    if (!ziplistSafeToAdd(o->ptr, sum))
+        hashTypeConvert(o, OBJ_ENCODING_HT);
+}
+
+```
+
+
+
+```c
+int hashTypeSet(robj *o, sds field, sds value, int flags) 
+{
+    int update = 0;
+    // 判断是否为ZipList编码
+    if (o->encoding == OBJ_ENCODING_ZIPLIST) 
+    {
+        unsigned char *zl, *fptr, *vptr;
+        zl = o->ptr;
+        // 查询head指针
+        fptr = ziplistIndex(zl, ZIPLIST_HEAD);
+        if (fptr != NULL) 
+        { // head不为空，说明ZipList不为空，开始查找key
+            fptr = ziplistFind(zl, fptr, (unsigned char*)field, sdslen(field), 1);
+            if (fptr != NULL) 
+            {// 判断是否存在，如果已经存在则更新
+                update = 1;
+                zl = ziplistReplace(zl, vptr, (unsigned char*)value,
+                        sdslen(value));
+            }
+        }
+        // 不存在，则直接push
+        if (!update) 
+        { // 依次push新的field和value到ZipList的尾部
+            zl = ziplistPush(zl, (unsigned char*)field, sdslen(field),
+                    ZIPLIST_TAIL);
+            zl = ziplistPush(zl, (unsigned char*)value, sdslen(value),
+                    ZIPLIST_TAIL);
+        }
+        o->ptr = zl;
+        /* 插入了新元素，检查list长度是否超出，超出则转为HT */
+        if (hashTypeLength(o) > server.hash_max_ziplist_entries)
+            hashTypeConvert(o, OBJ_ENCODING_HT);
+    } else if (o->encoding == OBJ_ENCODING_HT) 
+    {
+        // HT编码，直接插入或覆盖
+    } else 
+    {
+        serverPanic("Unknown hash encoding");
+    }
+    return update;
+}
+
+```
+
+
+
+
+
+
+
+
+
+# Redis网络模型
+
+## 用户空间和内核空间
+
+为了避免用户应用导致冲突甚至内核崩溃，用户应用与内核是分离的
+
+进程的寻址空间会划分为两部分：内核空间、用户空间
+
+用户空间只能执行受限的命令（Ring3），而且不能直接调用系统资源，必须通过内核提供的接口来访问
+
+内核空间可以执行特权命令（Ring0），调用一切系统资源
+
+
+
+对 32 位操作系统而言，它的寻址空间（虚拟地址空间，或叫线性地址空间）为 4G（2的32次方）。也就是说一个进程的最大地址空间为 4G。操作系统的核心是内核(kernel)，它独立于普通的应用程序，可以访问受保护的内存空间，也有访问底层硬件设备的所有权限。为了保证内核的安全，现在的操作系统一般都强制用户进程不能直接操作内核。具体的实现方式基本都是由操作系统将虚拟地址空间划分为两部分，一部分为内核空间，另一部分为用户空间。针对 Linux 操作系统而言，最高的 1G 字节(从虚拟地址 0xC0000000 到 0xFFFFFFFF)由内核使用，称为内核空间。而较低的 3G 字节(从虚拟地址 0x00000000 到 0xBFFFFFFF)由各个进程使用，称为用户空间。
+
+每个进程的 4G 地址空间中，最高 1G 都是一样的，即内核空间。只有剩余的 3G 才归进程自己使用。
+换句话说就是， 最高 1G 的内核空间是被所有进程共享的。
+
+
+
+在 CPU 的所有指令中，有些指令是非常危险的，如果错用，将导致系统崩溃，比如清内存、设置时钟等。如果允许所有的程序都可以使用这些指令，那么系统崩溃的概率将大大增加。
+所以，CPU 将指令分为特权指令和非特权指令，对于那些危险的指令，只允许操作系统及其相关模块使用，普通应用程序只能使用那些不会造成灾难的指令。比如 Intel 的 CPU 将特权等级分为 4 个级别：Ring0~Ring3。
+其实 Linux 系统只使用了 Ring0 和 Ring3 两个运行级别(Windows 系统也是一样的)。当进程运行在 Ring3 级别时被称为运行在用户态，而运行在 Ring0 级别时被称为运行在内核态。
+
+
+
+当进程运行在内核空间时就处于内核态，而进程运行在用户空间时则处于用户态。
+
+在内核态下，进程运行在内核地址空间中，此时 CPU 可以执行任何指令。运行的代码也不受任何的限制，可以自由地访问任何有效地址，也可以直接进行端口的访问。
+
+在用户态下，进程运行在用户地址空间中，被执行的代码要受到 CPU 的诸多检查，它们只能访问映射其地址空间的页表项中规定的在用户态下可访问页面的虚拟地址，且只能对任务状态段(TSS)中 I/O 许可位图(I/O Permission Bitmap)中规定的可访问端口进行直接访问。
+
+
+
+其实所有的系统资源管理都是在内核空间中完成的。比如读写磁盘文件，分配回收内存，从网络接口读写数据等等。我们的应用程序是无法直接进行这样的操作的。但是我们可以通过内核提供的接口来完成这样的任务。
+
+比如应用程序要读取磁盘上的一个文件，它可以向内核发起一个 “系统调用” 告诉内核：“我要读取磁盘上的某某文件”。其实就是通过一个特殊的指令让进程从用户态进入到内核态(到了内核空间)，在内核空间中，CPU 可以执行任何的指令，当然也包括从磁盘上读取数据。具体过程是先把数据读取到内核空间中，然后再把数据拷贝到用户空间并从内核态切换到用户态。此时应用程序已经从系统调用中返回并且拿到了想要的数据，可以开开心心的往下执行了。
+
+
+
+Linux系统为了提高IO效率，会在用户空间和内核空间都加入缓冲区
+
+* 写数据时，要把用户缓冲数据拷贝到内核缓冲区，然后写入设备
+* 读数据时，要从设备读取数据到内核缓冲区，然后拷贝到用户缓冲区
+
+
+
+
+
+
+
+## 阻塞IO
+
+
+
+5种IO模型：
+
+* 阻塞IO（Blocking IO）
+* 非阻塞IO（Nonblocking IO）
+* IO多路复用（IO Multiplexing）
+* 信号驱动IO（Signal Driven IO）
+* 异步IO（Asynchronous IO）
+
+
+
+阻塞IO就是两个阶段都必须阻塞等待
+
+阶段一：
+
+* 用户进程尝试读取数据（比如网卡数据）
+* 此时数据尚未到达，内核需要等待数据
+* 此时用户进程也处于阻塞状态
+
+阶段二：
+
+* 数据到达并拷贝到内核缓冲区，代表已就绪
+* 将内核数据拷贝到用户缓冲区
+* 拷贝过程中，用户进程依然阻塞等待
+* 拷贝完成，用户进程解除阻塞，处理数据
+
+
+
+
+
+## 非阻塞IO
+
+非阻塞IO的recvfrom操作会立即返回结果而不是阻塞用户进程
+
+阶段一：
+
+* 用户进程尝试读取数据（比如网卡数据）
+* 此时数据尚未到达，内核需要等待数据
+* 返回异常给用户进程
+* 用户进程拿到error后，再次尝试读取
+* 循环往复，直到数据就绪
+
+阶段二：
+
+* 将内核数据拷贝到用户缓冲区
+* 拷贝过程中，用户进程依然阻塞等待
+* 拷贝完成，用户进程解除阻塞，处理数据
+
+
+
+非阻塞IO模型中，用户进程在第一个阶段是非阻塞，第二个阶段是阻塞状态。虽然是非阻塞，但性能并没有得到提高。而且 忙等机制会导致CPU空转，CPU使用率暴增
+
+
+
+
+
+## IO多路复用
+
+无论是阻塞IO还是非阻塞IO，用户应用在一阶段都需要调用recvfrom来获取数据，差别在于无数据时的处理方案
+
+* 如果调用recvfrom时，恰好没有数据，阻塞IO会使CPU阻塞，非阻塞IO使CPU空转，都不能充分发挥CPU的作用
+* 如果调用recvfrom时，恰好有数据，则用户进程可以直接进入第二阶段，读取并处理数据
+
+而在单线程情况下，只能依次处理IO事件，如果正在处理的IO事件恰好未就绪（数据不可读或不可写），线程就会被阻塞，所有IO事 件都必须等待，性能自然会很差
+
+
+
+* 文件描述符（File Descriptor）：简称FD，是一个从0 开始的无符号整数，用来关联Linux中的一个文件。在Linux中 ，一切皆文件，例如常规文件、视频、硬件设备等，当然也包括网络套接字（Socket）
+
+* IO多路复用：是利用单个线程来同时监听多个FD，并在某个FD可读、可写时得到通知，从而避免无效的等待，充分利 用CPU资源
+
+
+
+阶段一：
+
+* 用户进程调用select，指定要监听的FD集合
+* 内核监听FD对应的多个socket
+* 任意一个或多个socket数据就绪则返回readable
+* 此过程中用户进程阻塞
+
+阶段二：
+
+* 用户进程找到就绪的socket
+* 依次调用recvfrom读取数据
+* 内核将数据拷贝到用户空间
+* 用户进程处理数据
+
+
+
+IO多路复用是利用单个线程来同时监听多个FD，并在某个FD可读、可写时得到通知，从而避免无效的等待，充分利用 CPU资源。不过监听FD的方式、通知的方式又有多种实现，常见的有
+
+* select
+* poll
+* epoll
+
+select和poll只会通知用户进程有FD就绪，但不确 定具体是哪个FD，需要用户进程逐个遍历FD来确认
+
+epoll则会在通知用户进程FD就绪的同时，把已就 绪的FD写入用户空间
+
+
+
+
+
+
+
+### select
+
+
+
