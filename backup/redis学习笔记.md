@@ -8226,3 +8226,294 @@ Redis中会根据存储的数据类型不同，选择不同的编码方式。每
 
 ## String
 
+String是Redis中最常见的数据存储类型
+
+其基本编码方式是RAW，基于简单动态字符串（SDS）实现，存储上限为512mb
+
+如果存储的SDS长度小于44字节，则会采用EMBSTR编码，此时object head与SDS是一段连续空间。申请内存时只需要调用一次内存分配函数，效率更高
+
+如果存储的字符串是整数值，并且大小在LONG_MAX范围内，则会采用INT编码：直接将数据保存在RedisObject 的ptr指针位置（刚好8字节），不再需要SDS
+
+
+
+
+
+## List
+
+Redis的List结构类似一个双端链表，可以从首、尾操作列表中的元素
+
+在3.2版本之前，Redis采用ZipList和LinkedList来实现List，当元素数量小于512并且元素大小小于64字节时采用 ZipList编码，超过则采用LinkedList编码。
+
+在3.2版本之后，Redis统一采用QuickList来实现List
+
+
+
+```c
+void pushGenericCommand(client *c, int where, int xx) 
+{
+    int j;
+    // 尝试找到KEY对应的list
+    robj *lobj = lookupKeyWrite(c->db, c->argv[1]);
+    // 检查类型是否正确
+    if (checkType(c,lobj,OBJ_LIST)) return;
+    // 检查是否为空
+    if (!lobj) {
+        if (xx) {
+            addReply(c, shared.czero);
+            return;
+        }
+        // 为空，则创建新的QuickList
+        lobj = createQuicklistObject();
+        quicklistSetOptions(lobj->ptr, server.list_max_ziplist_size,
+                            server.list_compress_depth);
+        dbAdd(c->db,c->argv[1],lobj);
+    }
+    // 略 ...
+}
+```
+
+
+
+```c
+robj *createQuicklistObject(void) 
+{
+    // 申请内存并初始化QuickList
+    quicklist *l = quicklistCreate();
+    // 创建RedisObject，type为OBJ_LIST
+    // ptr指向 QuickList
+    robj *o = createObject(OBJ_LIST,l);
+    // 设置编码为 QuickList
+    o->encoding = OBJ_ENCODING_QUICKLIST;
+    return o;
+}
+
+```
+
+
+
+
+
+## Set
+
+Set是Redis中的单列集合，满足下列特点
+
+* 不保证有序性
+* 保证元素唯一
+* 要求能求交集、并集、差集
+
+
+
+Set是Redis中的集合，不一定确保元素有序，可以满足元素唯一、查询效率要求极高
+
+为了查询效率和唯一性，set采用HT编码（Dict）。Dict中的key用来存储元素，value统一为null
+
+当存储的所有数据都是整数，并且元素数量不超过set-max-intset-entries时，Set会采用IntSet编码，以节省内存
+
+
+
+```c
+robj *setTypeCreate(sds value) 
+{
+    // 判断value是否是数值类型 long long 
+    if (isSdsRepresentableAsLongLong(value,NULL) == C_OK)
+        // 如果是数值类型，则采用IntSet编码
+        return createIntsetObject();
+    // 否则采用默认编码，也就是HT
+    return createSetObject();
+}
+
+```
+
+
+
+```c
+robj *createIntsetObject(void) 
+{
+    // 初始化INTSET并申请内存空间
+    intset *is = intsetNew();
+    // 创建RedisObject
+    robj *o = createObject(OBJ_SET,is);
+    // 指定编码为INTSET
+    o->encoding = OBJ_ENCODING_INTSET;
+    return o;
+}
+
+```
+
+
+
+```c
+robj *createSetObject(void) 
+{
+    // 初始化Dict类型，并申请内存
+    dict *d = dictCreate(&setDictType,NULL);
+    // 创建RedisObject
+    robj *o = createObject(OBJ_SET,d);
+    // 设置encoding为HT
+    o->encoding = OBJ_ENCODING_HT;
+    return o;
+}
+
+```
+
+
+
+
+
+## ZSet
+
+ZSet也就是SortedSet，其中每一个元素都需要指定一个score值和member值
+
+* 可以根据score值排序
+* lmember必须唯一
+* l可以根据member查询分数
+
+因此，zset底层数据结构必须满足键值存储、键必须唯一、可排序这几个需求
+
+
+
+结构：
+
+* **SkipList**：可以排序，并且可以同时存储score和ele值（member）
+* **HT**（Dict）：可以键值存储，并且可以根据key找value
+
+
+
+
+
+```c
+// zset结构
+typedef struct zset 
+{
+    // Dict指针
+    dict *dict;
+    // SkipList指针
+    zskiplist *zsl;
+} zset;
+
+```
+
+
+
+```c
+robj *createZsetObject(void) 
+{
+    zset *zs = zmalloc(sizeof(*zs));
+    robj *o;
+    // 创建Dict
+    zs->dict = dictCreate(&zsetDictType,NULL);
+    // 创建SkipList
+    zs->zsl = zslCreate(); 
+    o = createObject(OBJ_ZSET,zs);
+    o->encoding = OBJ_ENCODING_SKIPLIST;
+    return o;
+}
+```
+
+
+
+
+
+当元素数量不多时，HT和SkipList的优势不明显，而且更耗内存。因此zset还会采用ZipList结构来节省内存，不过需要同时满足两个条件：
+
+* 元素数量小于zset_max_ziplist_entries，默认值128
+* 每个元素都小于zset_max_ziplist_value字节，默认值64
+
+
+
+```c
+// zadd添加元素时，先根据key找到zset，不存在则创建新的zset
+zobj = lookupKeyWrite(c->db,key);
+if (checkType(c,zobj,OBJ_ZSET)) goto cleanup;
+// 判断是否存在
+if (zobj == NULL) { // zset不存在
+    if (server.zset_max_ziplist_entries == 0 ||
+        server.zset_max_ziplist_value < sdslen(c->argv[scoreidx+1]->ptr))
+    { // zset_max_ziplist_entries设置为0就是禁用了ZipList，
+        // 或者value大小超过了zset_max_ziplist_value，采用HT + SkipList
+        zobj = createZsetObject();
+    } else { // 否则，采用 ZipList
+        zobj = createZsetZiplistObject();
+    }
+    dbAdd(c->db,key,zobj); 
+}
+// ....
+zsetAdd(zobj, score, ele, flags, &retflags, &newscore);
+
+```
+
+
+
+```c
+robj *createZsetZiplistObject(void) 
+{
+    // 创建ZipList
+    unsigned char *zl = ziplistNew();
+    robj *o = createObject(OBJ_ZSET,zl);
+    o->encoding = OBJ_ENCODING_ZIPLIST;
+    return o;
+}
+
+```
+
+
+
+
+
+```c
+int zsetAdd(robj *zobj, double score, sds ele, int in_flags, int *out_flags, double *newscore) 
+{
+    /* 判断编码方式*/
+    if (zobj->encoding == OBJ_ENCODING_ZIPLIST) {// 是ZipList编码
+        unsigned char *eptr;
+        // 判断当前元素是否已经存在，已经存在则更新score即可        if ((eptr = zzlFind(zobj->ptr,ele,&curscore)) != NULL) {
+            //...略
+            return 1;
+        } else if (!xx) {
+            // 元素不存在，需要新增，则判断ziplist长度有没有超、元素的大小有没有超
+            if (zzlLength(zobj->ptr)+1 > server.zset_max_ziplist_entries
+ 		|| sdslen(ele) > server.zset_max_ziplist_value 
+ 		|| !ziplistSafeToAdd(zobj->ptr, sdslen(ele)))
+            { // 如果超出，则需要转为SkipList编码
+                zsetConvert(zobj,OBJ_ENCODING_SKIPLIST);
+            } else 
+            {
+                zobj->ptr = zzlInsert(zobj->ptr,ele,score);
+                if (newscore) *newscore = score;
+                *out_flags |= ZADD_OUT_ADDED;
+                return 1;
+            }
+        } else {
+            *out_flags |= ZADD_OUT_NOP;
+            return 1;
+        }
+    }   // 本身就是SKIPLIST编码，无需转换
+    if (zobj->encoding == OBJ_ENCODING_SKIPLIST) 
+    {
+       // ...略
+    } else 
+    {
+        serverPanic("Unknown sorted set encoding");
+    }
+    return 0; /* Never reached. */
+}
+
+```
+
+
+
+
+
+ziplist本身没有排序功能，而且没有键值对的概念，因此需要有zset通过编码实现
+
+* ZipList是连续内存，因此score和element是紧挨在一起的两个entry， element在前，score在后
+* score越小越接近队首，score越大越接近队尾，按照score值升序排列
+
+
+
+
+
+
+
+## Hash
+
