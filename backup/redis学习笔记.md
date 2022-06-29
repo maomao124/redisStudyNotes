@@ -9433,7 +9433,7 @@ import java.util.List;
  * *3\r\n
  * :10\r\n
  * $5\r\nhello\r\n
- * 
+ * ```
  */
 
 
@@ -10215,4 +10215,222 @@ https://github.com/maomao124/Redis_client.git
 
 
 # Redis内存策略
+
+## 内存过期策略
+
+Redis本身是一个典型的key-value内存存储数据库，因此所有的key、value都保存在之前学习过的Dict结构中。不过 在其database结构体中，有两个Dict：一个用来记录key-value；另一个用来记录key-TTL
+
+
+
+```c
+typedef struct redisDb 
+{
+    dict *dict;                 /* 存放所有key及value的地方，也被称为keyspace*/
+    dict *expires;              /* 存放每一个key及其对应的TTL存活时间，只包含设置了TTL的key*/
+    dict *blocking_keys;        /* Keys with clients waiting for data (BLPOP)*/
+    dict *ready_keys;           /* Blocked keys that received a PUSH */
+    dict *watched_keys;         /* WATCHED keys for MULTI/EXEC CAS */
+    int id;                     /* Database ID，0~15 */
+    long long avg_ttl;          /* 记录平均TTL时长 */
+    unsigned long expires_cursor; /* expire检查时在dict中抽样的索引位置. */
+    list *defrag_later;         /* 等待碎片整理的key列表. */
+} redisDb;
+
+```
+
+
+
+Redis是如何知道一个key是否过期?
+
+利用两个Dict分别记录key-value对及key-ttl对
+
+采用惰性删除和周期删除策略来删除过期的key
+
+
+
+### 惰性删除
+
+**惰性删除：**顾明思议并不是在TTL到期后就立刻删除，而是在访问一个key的时候，检查该key的存活时间，如果已经 过期才执行删除
+
+
+
+```c
+// 查找一个key执行写操作
+robj *lookupKeyWriteWithFlags(redisDb *db, robj *key, int flags) 
+{
+    // 检查key是否过期
+    expireIfNeeded(db,key);
+    return lookupKey(db,key,flags);
+}
+// 查找一个key执行读操作
+robj *lookupKeyReadWithFlags(redisDb *db, robj *key, int flags) 
+{
+    robj *val;
+    // 检查key是否过期    if (expireIfNeeded(db,key) == 1) {
+        // ...略
+    }
+    return NULL;
+}
+
+```
+
+
+
+```c
+int expireIfNeeded(redisDb *db, robj *key) 
+{
+    // 判断是否过期，如果未过期直接结束并返回0
+    if (!keyIsExpired(db,key))
+        return 0;
+    // ... 略
+    // 删除过期key
+    deleteExpiredKeyAndPropagate(db,key);
+    return 1;
+}
+
+```
+
+
+
+
+
+### 周期删除
+
+**周期删除：**顾明思议是通过一个定时任务，周期性的抽样部分过期的key，然后执行删除。执行周期有两种：
+
+* Redis服务初始化函数initServer()中设置定时任务，按照server.hz的频率来执行过期key清理，模式为SLOW
+* Redis的每个事件循环前会调用beforeSleep()函数，执行过期key清理，模式为FAST
+
+
+
+SLOW模式规则：
+
+* 执行频率受server.hz影响，默认为10，即每秒执行10次，每个执行周期100ms。
+* 执行清理耗时不超过一次执行周期的25%，默认slow模式耗时不超过25ms
+* 逐个遍历db，逐个遍历db中的bucket，抽取20个key判断是否过期
+* 如果没达到时间上限（25ms）并且过期key比例大于10%，再进行一次抽样，否则结束
+
+
+
+FAST模式规则（过期key比例小于10%不执行 ）：
+
+* 执行频率受beforeSleep()调用频率影响，但两次FAST模式间隔不低于2ms
+* 执行清理耗时不超过1ms
+* 逐个遍历db，逐个遍历db中的bucket，抽取20个key判断是否过期
+* 如果没达到时间上限（1ms）并且过期key比例大于10%，再进行一次抽样，否则结束
+
+
+
+```c
+// server.c
+void initServer(void)
+{
+    // ...
+    // 创建定时器，关联回调函数serverCron，处理周期取决于server.hz，默认10
+    aeCreateTimeEvent(server.el, 1, serverCron, NULL, NULL) 
+}
+
+```
+
+
+
+```c
+// server.c
+int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) 
+{
+    // 更新lruclock到当前时间，为后期的LRU和LFU做准备
+    unsigned int lruclock = getLRUClock();
+    atomicSet(server.lruclock,lruclock);
+    // 执行database的数据清理，例如过期key处理
+    databasesCron();
+}
+
+```
+
+
+
+```c
+void databasesCron(void) 
+{
+    // 尝试清理部分过期key，清理模式默认为SLOW
+    activeExpireCycle(
+          ACTIVE_EXPIRE_CYCLE_SLOW);
+}
+
+```
+
+
+
+```c
+void beforeSleep(struct aeEventLoop *eventLoop)
+{
+    // ...
+    // 尝试清理部分过期key，清理模式默认为FAST
+    activeExpireCycle(
+         ACTIVE_EXPIRE_CYCLE_FAST);
+}
+
+```
+
+
+
+
+
+
+
+## 内存淘汰策略
+
+内存淘汰：就是当Redis内存使用达到设置的上限时，主动挑选部分key删除以释放更多内存的流程。Redis会在处理 客户端命令的方法processCommand()中尝试做内存淘汰
+
+
+
+```c
+int processCommand(client *c) 
+{
+    // 如果服务器设置了server.maxmemory属性，并且并未有执行lua脚本
+    if (server.maxmemory && !server.lua_timedout) 
+    {
+        // 尝试进行内存淘汰performEvictions
+        int out_of_memory = (performEvictions() == EVICT_FAIL);
+        // ...
+        if (out_of_memory && reject_cmd_on_oom) 
+        {
+            rejectCommand(c, shared.oomerr);
+            return C_OK;
+        }
+        // ....
+    }
+}
+```
+
+
+
+Redis支持8种不同策略来选择要删除的key
+
+|    淘汰策略     |                             说明                             |
+| :-------------: | :----------------------------------------------------------: |
+|   noeviction    | 不淘汰任何key，但是内存满时不允许写入新数据，默认就是这种策略 |
+|  volatile-ttl   |   对设置了TTL的key，比较key的剩余TTL值，TTL越小越先被淘汰    |
+| allkeys-random  |   对全体key ，随机进行淘汰。也就是直接从db->dict中随机挑选   |
+| volatile-random | 对设置了TTL的key ，随机进行淘汰。也就是从db->expires中随机挑选 |
+|   allkeys-lru   |                对全体key，基于LRU算法进行淘汰                |
+|  volatile-lru   |            对设置了TTL的key，基于LRU算法进行淘汰             |
+|   allkeys-lfu   |                对全体key，基于LFU算法进行淘汰                |
+|  volatile-lfu   |            对设置了TTL的key，基于LFI算法进行淘汰             |
+
+
+
+* LRU（Least Recently Used），最少最近使用。用当前时间减去最后一次访问时间，这个值越大则淘汰优先级越高。
+* LFU（Least Frequently Used），最少频率使用。会统计每个key的访问频率，值越小淘汰优先级越高
+
+
+
+LFU的访问次数之所以叫做**逻辑访问次数**，是因为并不是每次key被访问都计数，而是通过运算
+
+* 生成0~1之间的随机数R
+* 计算 (旧次数 * lfu_log_factor + 1)，记录为P
+* 如果 R < P ，则计数器 + 1，且最大不超过255
+* 访问次数会随时间衰减，距离上一次访问时间每隔 lfu_decay_time 分钟，计数器 -1
+
+
 
